@@ -52,6 +52,9 @@ const (
 	MethodCount = "count"
 	// MethodLabel reports a single label string rather than a number.
 	MethodLabel = "label"
+	// MethodDirect takes the dimension value from the judge's emitted
+	// dimension for this construct rather than aggregating claim labels.
+	MethodDirect = "direct"
 )
 
 // validMethods is the set of accepted Method values.
@@ -61,6 +64,7 @@ var validMethods = map[string]bool{
 	MethodSum:      true,
 	MethodCount:    true,
 	MethodLabel:    true,
+	MethodDirect:   true,
 }
 
 // MeasurementContract is the operational definition of one or more constructs:
