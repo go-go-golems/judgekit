@@ -28,17 +28,17 @@ type SliceReport struct {
 // dataset. BrierScore and ECE are nil when the protocol emits no confidence
 // probabilities; calibration metrics apply only when confidence is present.
 type Report struct {
-	APIVersion       string              `json:"api_version" yaml:"api_version"`
-	ProtocolDigest   string              `json:"protocol_digest" yaml:"protocol_digest"`
-	DatasetDigest    string              `json:"dataset_digest" yaml:"dataset_digest"`
-	ExtractionRecall float64             `json:"extraction_recall" yaml:"extraction_recall"`
-	Sensitivity      float64             `json:"sensitivity" yaml:"sensitivity"`
-	Specificity       float64             `json:"specificity" yaml:"specificity"`
-	FalseSupportRate float64             `json:"false_support_rate" yaml:"false_support_rate"`
-	BrierScore       *float64            `json:"brier_score,omitempty" yaml:"brier_score,omitempty"`
-	ECE              *float64            `json:"ece,omitempty" yaml:"ece,omitempty"`
+	APIVersion       string                 `json:"api_version" yaml:"api_version"`
+	ProtocolDigest   string                 `json:"protocol_digest" yaml:"protocol_digest"`
+	DatasetDigest    string                 `json:"dataset_digest" yaml:"dataset_digest"`
+	ExtractionRecall float64                `json:"extraction_recall" yaml:"extraction_recall"`
+	Sensitivity      float64                `json:"sensitivity" yaml:"sensitivity"`
+	Specificity      float64                `json:"specificity" yaml:"specificity"`
+	FalseSupportRate float64                `json:"false_support_rate" yaml:"false_support_rate"`
+	BrierScore       *float64               `json:"brier_score,omitempty" yaml:"brier_score,omitempty"`
+	ECE              *float64               `json:"ece,omitempty" yaml:"ece,omitempty"`
 	ByGroup          map[string]SliceReport `json:"by_group,omitempty" yaml:"by_group,omitempty"`
-	Digest           string               `json:"digest" yaml:"digest"`
+	Digest           string                 `json:"digest" yaml:"digest"`
 }
 
 // CalibrateInput is the data needed to compute a calibration report: the gold
@@ -174,11 +174,11 @@ type reportDigestInput struct {
 	DatasetDigest    string                 `json:"dataset_digest"`
 	ExtractionRecall float64                `json:"extraction_recall"`
 	Sensitivity      float64                `json:"sensitivity"`
-	Specificity       float64                `json:"specificity"`
+	Specificity      float64                `json:"specificity"`
 	FalseSupportRate float64                `json:"false_support_rate"`
-	BrierScore       *float64                `json:"brier_score,omitempty"`
-	ECE              *float64                `json:"ece,omitempty"`
-	ByGroup          map[string]SliceReport  `json:"by_group,omitempty"`
+	BrierScore       *float64               `json:"brier_score,omitempty"`
+	ECE              *float64               `json:"ece,omitempty"`
+	ByGroup          map[string]SliceReport `json:"by_group,omitempty"`
 }
 
 func validateReportBody(r *Report) error {

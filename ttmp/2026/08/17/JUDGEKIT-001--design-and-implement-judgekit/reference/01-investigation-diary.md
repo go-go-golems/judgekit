@@ -407,3 +407,195 @@ With the core implemented and tested, I wrote the intern-facing documentation th
 - Implement the `audit` (reliability/bias probes, panels) and `calibration` (gold, extraction recall, confusion, Brier, ECE) packages per the design's Phases 8–9.
 - Add fuzz tests for `canonicaljson`, `strictdecode`, and report sealing per the design's Phase 11.2.
 - Run a CoinVault pilot that ports the claim extraction + support path onto judgekit and removes the duplicated local generic structures (design Phase 7), gated by characterization fixtures.
+
+## Step 11: Implement the calibration package (Phase 8)
+
+The user asked to implement the three remaining core packages. I started with `calibration` because it sits at the bottom of the dependency graph (it consumes `assessment.Report` and `spec.ConstructID`; it does not run judges), so it could be built and tested in isolation before the packages that depend on `judging`.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Ok, implement. commit at appropriate intervals and keep a detailed diary as you work (using the diary format from the skill) (make sure to use the skill format)"
+
+**Assistant interpretation:** Implement the audit/calibration/suite packages specified in the design doc (Sections 6-8, Phases 8-9), commit per package, and record each as a diary step in the strict skill format.
+
+**Inferred user intent:** Complete the judgekit core so the planned reliability, calibration, and evaluator-suite capabilities exist as tested, provider-neutral code, not just design prose.
+
+**Commit (code):** ffdf863 — "feat(calibration): add gold records, extraction recall, confusion, Brier, ECE"
+
+### What I did
+- Wrote `calibration/doc.go`, `gold.go`, `confusion.go`, `recall.go`, `scoring.go`, `report.go`, and `calibration_test.go`.
+- `GoldClaim`/`GoldDimension`/`GoldSet` retain `ReviewerIDs`; `Adjudicated` does not erase them. Gold sets are content-addressed.
+- `Confusion` is a 2x2 over matched claims (entailed vs non-entailed) with `Sensitivity`, `Specificity`, `FalseSupportRate`.
+- `ExtractionRecall` = matched / len(gold); `MatchByID` default, `MatchByText` brittle fallback.
+- `BrierScore` and `ExpectedCalibrationError` over (confidence, outcome) pairs; `*float64` and nil when no confidence.
+- `Calibrate` matches gold to model verdicts per instance, builds confusion over matched claims, recall over all gold, Brier/ECE over claims with confidence, seals the report.
+- Exported `assessment.ValidSupportLabel` so calibration can validate labels without re-declaring the set.
+- Removed a stray 43 MB `judgekit` build binary from the repo root and added `/judgekit` to `.gitignore`.
+
+### Why
+- Calibration is the link to human/objective labels and the place where "a judge can look accurate by extracting fewer claims" is exposed. It belongs in judgekit, not the application, because the metrics are generic over reports and gold records.
+- Keeping `ReviewerIDs` even after adjudication is a measurement-theory invariant (Chapter 1 §1.5): agreement must be measurable, and adjudication must not erase the disagreement that produced it.
+
+### What worked
+- `GOWORK=off go test ./calibration/` green; full suite still green. The `TestCalibrateMissedClaimReducesRecallNotConfusion` test pins the key semantic: a missed claim lowers recall but does not enter the confusion matrix, so the two metrics measure different things.
+
+### What didn't work
+- `calibration/scoring.go` used `assessment.ClaimAssessment` in `ConfidenceOutcomePairs` without importing `assessment` -> `undefined: assessment`. Fixed by adding the import.
+- `&goldClaim(...)` in tests: cannot take the address of a function-call result. Fixed by assigning to a variable first.
+- `TestBrierScore` compared `bs != 0.01` exactly; 0.01 is not exactly representable in float64, so the test failed with `0.009999999999999998`. Fixed with a tolerance band (`> 0.0101 || < 0.0099`).
+
+### What I learned
+- The clean separation between extraction recall and confusion: recall is over all gold claims (a miss is a recall failure), while confusion is over matched claims only (a miss gives no predicted label, so it cannot enter a 2x2). Conflating them would double-count misses.
+- Brier/ECE must be `*float64` and nil when no confidence is emitted, because forcing a number would imply the protocol is calibrated when it emitted no probabilities at all.
+
+### What was tricky to build
+- Sealing vs. digest presence, again (the same pattern as `assessment`): `Seal` must validate before the digest exists, so I split `validateReportBody` (all checks except digest presence) from `ValidateReport` (body + digest check), and `Seal` calls the body, computes the digest, sets it. This keeps a single source of truth for the range/format checks.
+- `MatchByText` needs the predicted claim text, which lives in `report.Claims`, not in `ClaimAssessment`. I made `MatchByText(report)` return a `ClaimMatcher` that closes over a claim-ID-to-text map built from the report, so the matcher has access to the text without the caller threading it through.
+
+### What warrants a second pair of eyes
+- `Calibrate` matches gold claims to model verdicts per instance and silently skips gold claims whose instance has no report. Confirm that is the desired behavior (an unjudged instance counts as a recall miss for all its gold claims, which lowers recall) versus an explicit error.
+- ECE uses equal-width binning and can hide within-bin structure; the design doc warns about this. A reliability-diagram helper would make the within-bin structure inspectable; deferred.
+
+### What should be done in the future
+- Add per-group `ByGroup` slicing in `Calibrate` (the field exists on the report but `Calibrate` does not populate it yet); requires a grouping key on gold records.
+- Add a reliability-diagram helper alongside ECE.
+
+### Code review instructions
+- Start at `calibration/report.go` (`Calibrate`, `Seal`), then `calibration/confusion.go` (`ConfusionFromClaims`, the metric methods), then `calibration/recall.go` (`ExtractionRecall`, matchers).
+- Run `GOWORK=off go test ./calibration/ -v`.
+
+### Technical details
+- Commands: `GOWORK=off go build ./calibration/`, `GOWORK=off go test ./calibration/`, `GOWORK=off go test ./...`.
+- Brier: `(1/n) * sum (p - z)^2`. ECE: `sum_b (|I_b|/n) * |acc(I_b) - conf(I_b)|` with equal-width bins; a confidence of exactly 1.0 is clamped into the last bin.
+- No new external dependencies; calibration imports only `assessment`, `spec`, and `internal/{canonicaljson,identifier}`.
+
+## Step 12: Implement the audit package (Phase 9, part 1)
+
+`audit` measures consistency (reliability) and sensitivity to features outside the construct (bias). It depends on `eval`, `assessment`, `spec`, and `judging` (panels use `judging.Judge`); it never calls providers directly. I built it after `calibration` because it sits above `calibration` in the dependency graph and needs the `Judge` interface to run probes.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 11)
+
+**Commit (code):** c27ced9 — "feat(audit): add reliability probes, disagreement reports, and panels"
+
+### What I did
+- Wrote `audit/doc.go`, `probes.go`, `disagreement.go`, `reliability.go`, `panel.go`, `audit_test.go`.
+- `Probe`/`ProbeKind` (repeat, evidence_order, candidate_order, prompt_paraphrase, format_transform, cross_judge). A probe MUST state `Invariants` so a found sensitivity can be localized. `NewProbeSet` content-addresses a probe set.
+- `CompareReports` returns per-construct value/label differences and per-claim support-label differences as `Disagreement`s.
+- `Reliability` runs a judge over a probe set, aggregates per-construct agreement and mean absolute delta, and seals the report. Never one "reliability score".
+- `Panel` runs several judges over one instance, preserves every member report, and computes a pairwise claim-label agreement matrix. Never collapses reports.
+- Extended `boundary_test.go` to `go list` `./audit` and `./calibration` so the forbidden-import guard covers the new packages.
+- A `scriptedJudge` test double returns canned reports keyed by instance ID so a probe's base and variant produce different reports deterministically.
+
+### Why
+- Reliability is consistency, not correctness; it must be separate from caching (a cached wrong verdict is stable but unreliable) and from the judging path. A probe that states its invariants localizes a sensitivity instead of just reporting "unstable".
+- Panels must preserve every member report because majority vote is an aggregation, not independent truth; collapsing loses the disagreement that reveals correlated errors (the "five judges, one error" counterexample).
+
+### What worked
+- `GOWORK=off go test ./audit/` green; full suite green; boundary test passes with audit+calibration included. `TestReliabilityDetectsDisagreement` pins faithfulness disagreement (0.5 vs 0.9 -> mean abs delta 0.4) and claim-label agreement 0 (entailed vs contradicted). `TestPanelPreservesAllReports` confirms two reports survive.
+
+### What didn't work
+- First `CompareReports` test failed: I had defined `Disagreement.BaseLabel`/`VariantLabel` as `assessment.SupportLabel`, but abstention dimensions carry free-form labels ("attempted"/"abstained") that `labelToSupport` discarded, so the disagreement was found but the label was empty. Fixed by changing the fields to `string` and removing `labelToSupport`; the fields now carry both support labels (claim disagreements) and free-form labels (dimension disagreements).
+- A `makeProbe` test helper carried an invalid `_Reports: nil` field; removed the helper since tests construct probes inline.
+
+### What I learned
+- A disagreement struct that conflates claim labels and dimension labels must use `string`, not `SupportLabel`, because dimension labels are an open set. The construct-vs-claim distinction is already carried by which ID field is set (`ConstructID` vs `ClaimID`).
+- Pairwise agreement over no shared claims must be 0, not 1, or the matrix over-reports agreement for judges that extracted disjoint claim sets.
+
+### What was tricky to build
+- `scriptedJudge.Evaluate` re-stamps `InstanceID`/`InstanceDigest` from the passed instance so the report matches the instance the reliability runner used, while the canned label/value comes from the script. This keeps the report internally consistent without the script needing to know each instance's digest.
+- `dimDiffers` treats a nil-vs-non-nil value as a difference but compares present values with a 1e-9 tolerance so float formatting noise does not create false disagreements.
+
+### What warrants a second pair of eyes
+- `Panel.Evaluate` runs judges sequentially, not concurrently, to keep the test double deterministic. A production panel should run concurrently with errgroup; confirm the sequential version is acceptable for v0 or switch before any real use.
+- `Reliability` skips probes whose judge evaluation errors out, returning the error; confirm fail-fast is preferred over partial reliability over the probes that succeeded.
+
+### What should be done in the future
+- Add bias probes (position, verbosity, style) as concrete probe builders, not just the `ProbeKind` enum.
+- Add cross-judge agreement as a first-class metric distinct from reliability.
+
+### Code review instructions
+- Start at `audit/reliability.go` (`Reliability`, `RunProbe`, `ValidateReport`), `audit/disagreement.go` (`CompareReports`, `dimDiffers`), `audit/panel.go` (`Panel.Evaluate`, `pairwiseAgreement`).
+- Run `GOWORK=off go test ./audit/ -v`.
+
+### Technical details
+- Commands: `GOWORK=off go build ./audit/`, `GOWORK=off go test ./audit/`, `GOWORK=off go test -run TestCorePackageBoundaries .`.
+- audit imports: `eval`, `assessment`, `spec`, `judging`, `internal/canonicaljson`, `internal/identifier`. No provider SDKs; the boundary test confirms `judging` is the only execution dependency.
+
+## Step 13: Implement the suite package (Phase 9, part 2)
+
+`suite` combines multiple evaluators over one instance without collapsing their reports. It depends on `eval`, `assessment`, and `judging`, and adds `golang.org/x/sync/errgroup` for concurrent execution. I built it last because it sits beside `audit` and is the top of the dependency graph among the three new packages.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 11)
+
+**Commit (code):** ca7a698 — "feat(suite): add acyclic evaluator suites with concurrent execution"
+
+### What I did
+- Wrote `suite/doc.go`, `suite.go`, `suite_test.go`.
+- `Evaluator` interface: `Name`, `DependsOn`, `Evaluate(ctx, inst, Results)`. `Results.Report(name)` lets one evaluator read another's report only after that dependency ran.
+- `Suite.Validate` (via `validateBody`): supported api_version, valid name, unique evaluator names, dependencies reference declared evaluators, and an acyclic graph (DFS with white/gray/black coloring reports the first cycle).
+- `Suite.Run`: dispatches evaluators in dependency waves; independent evaluators run concurrently via `errgroup`, dependents run after their dependencies complete and see a snapshotted `Results`. Each report retains its own protocol identity.
+- `NewSuite`: content-addressed; the digest is a function of the graph structure only (sorted dependency lists, no declaration order), so reordering evaluators does not change identity.
+- `JudgeEvaluator` adapts a `judging.Judge` to a dependency-free `Evaluator`.
+- Extended `boundary_test.go` to cover `./suite`.
+- Lint fixes across the two earlier packages: dropped a named return and an unused `sortConfidences` in calibration; switched `MatchByText` to `strings.EqualFold`; removed an unused `makeProbe` test helper in audit; gofmt'd several files.
+
+### Why
+- A real evaluation needs more than one judge (extractor -> support, fact verifier, abstention judge, style judge); collapsing them loses per-evaluator protocol identity and disagreement. The suite runs them in dependency order and retains every report.
+- The acyclic check is the invariant that makes `DependsOn` safe: a support judge may consume a claim extractor's output only when that edge is declared and cycle-free, otherwise the run would deadlock.
+
+### What worked
+- `GOWORK=off go test ./suite/` green; `TestRunConcurrent` confirms independent evaluators overlap (elapsed < 2*delay), proving errgroup actually runs them concurrently; `TestRunDependentEvaluatorSeesDependency` confirms a dependent sees its dependency's report; `TestSuiteDigestStable` confirms reordering evaluators does not change the digest.
+- `golangci-lint run` reports 0 issues after the cleanup.
+
+### What didn't work
+- First `TestSuiteDigestStable` failed: the digest included an ordered `EvaluatorNames` slice, so reordering evaluators changed the digest. Fixed by dropping `EvaluatorNames` (derivable from the dependencies map keys) and sorting each dependency list, so the digest is a function of the graph structure only.
+- `NewSuite` first used a placeholder-digest hack to pass `Validate` (which checked the digest before it was set). Fixed by splitting `validateBody` (no digest check) from `Validate` (body + digest check), the same pattern used in assessment and calibration.
+- Lint flagged: a named return in `ConfidenceOutcomePairs` (nonamedreturns), an unused `sortConfidences`, `strings.ToLower == strings.ToLower` instead of `strings.EqualFold` (staticcheck SA6005), and an unused `makeProbe` test helper (unused). All fixed.
+
+### What I learned
+- A suite digest must be a function of the graph, not the declaration order, or the same evaluation described two ways gets two identities. Canonical JSON sorts map keys, so a digest over the dependencies map (with sorted dep slices) is order-independent.
+- `errgroup` per wave plus `Wait()` between waves is the simple way to give dependents their dependencies' results: dispatch all ready evaluators concurrently, wait, then the next wave's readiness is recomputed.
+
+### What was tricky to build
+- The wave dispatch loop: each iteration finds evaluators whose remaining-dependencies set is empty, dispatches them concurrently, waits, then removes them from every other evaluator's remaining set. A snapshot of `Results` is taken at dispatch time so a concurrent evaluator sees a stable view. The `checkAcyclic` guard makes the "no ready evaluators but pending remain" branch unreachable, but it is kept as a deadlock guard.
+- `errgroup.WithContext` cancels remaining work on first error, so an evaluator failure fails the whole run fast; `TestRunErrorPropagates` pins that.
+
+### What warrants a second pair of eyes
+- The wave model runs each ready-set concurrently but waits between waves, so a long chain of dependents is sequential across waves. For deep chains, a per-evaluator future/condition would overlap more; confirm the wave model is acceptable for v0.
+- `Suite.Evaluators` is `[]Evaluator` (not serializable), and the digest carries only names + deps. Confirm that pinning a suite by digest is sufficient for reproducibility (the evaluators themselves are not content-addressed, only their graph).
+
+### What should be done in the future
+- Add a per-evaluator future/condition model for deeper concurrency if real suites have long dependency chains.
+- Content-address individual evaluators if suite reproducibility needs to pin the exact judges, not just the graph.
+
+### Code review instructions
+- Start at `suite/suite.go` (`Validate`/`validateBody`, `checkAcyclic`, `Run`, `NewSuite`), then `suite/suite_test.go`.
+- Run `GOWORK=off go test ./suite/ -v` and `GOWORK=off go test -run TestCorePackageBoundaries .`.
+
+### Technical details
+- Commands: `GOWORK=off go get golang.org/x/sync`, `GOWORK=off go mod tidy`, `GOWORK=off go test ./suite/`, `GOWORK=off golangci-lint run`.
+- New dependency: `golang.org/x/sync/errgroup` (the AGENT.md convention for goroutines; the design doc specifies errgroup). It is not on the boundary-test forbidden list.
+- suite imports: `eval`, `assessment`, `judging`, `internal/canonicaljson`, `internal/identifier`, `golang.org/x/sync/errgroup`. No provider SDKs.
+
+## Step 14: Full verification and ticket bookkeeping
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 11)
+
+### What I did
+- Ran `GOWORK=off go test -count=1 ./...` (15 packages, all green including the boundary test over spec/eval/protocol/assessment/judging/audit/calibration/suite/internal).
+- Ran `GOWORK=off golangci-lint run` -> 0 issues.
+- Confirmed `go vet ./...` and `gofmt -l` clean.
+
+### What worked
+- All three new packages pass tests and lint; the boundary test enforces the stdlib-only-core invariant across all eight core packages.
+
+### What should be done in the future
+- Update GLOSSARY.md and the developer reference to mark audit/calibration/suite as implemented (currently documented as "future").
+- Add the `audit` and `calibration` packages to the README package map and the user-guide invariants.
+- Add fuzz tests for the new metric functions (Brier/ECE, extraction recall, disagreement comparison) per the design's Phase 11.2.
