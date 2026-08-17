@@ -22,6 +22,13 @@ var validSupportLabels = map[SupportLabel]bool{
 	Insufficient: true,
 }
 
+// ValidSupportLabel reports whether label is one of the accepted three-way
+// support labels. It is exported so adjacent packages (calibration, audit) can
+// validate labels without re-declaring the set.
+func ValidSupportLabel(label SupportLabel) bool {
+	return validSupportLabels[label]
+}
+
 // ClaimAssessment is the verdict for one claim: its support label, the
 // evidence cited, an optional confidence, and a required reason. Entailed and
 // contradicted verdicts must cite at least one evidence item; only
