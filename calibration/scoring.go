@@ -3,7 +3,6 @@ package calibration
 import (
 	"fmt"
 	"math"
-	"sort"
 
 	"github.com/go-go-golems/judgekit/assessment"
 )
@@ -103,7 +102,8 @@ func ExpectedCalibrationError(confidences []float64, outcomes []float64, bins in
 // Pairs with no predicted confidence are skipped, so Brier and ECE are computed
 // only over claims the protocol emitted a confidence for. If no pair has a
 // confidence, the returned slices are empty (callers report a nil metric).
-func ConfidenceOutcomePairs(gold []GoldClaim, predicted []assessment.ClaimAssessment, matcher ClaimMatcher) (confidences, outcomes []float64) {
+func ConfidenceOutcomePairs(gold []GoldClaim, predicted []assessment.ClaimAssessment, matcher ClaimMatcher) ([]float64, []float64) {
+	var confidences, outcomes []float64
 	if matcher == nil {
 		matcher = MatchByID
 	}
@@ -120,15 +120,4 @@ func ConfidenceOutcomePairs(gold []GoldClaim, predicted []assessment.ClaimAssess
 		}
 	}
 	return confidences, outcomes
-}
-
-// sortConfidences is a helper retained for future reliability-diagram support;
-// it returns the indices that would sort confidences ascending.
-func sortConfidences(confidences []float64) []int {
-	idx := make([]int, len(confidences))
-	for i := range idx {
-		idx[i] = i
-	}
-	sort.Slice(idx, func(a, b int) bool { return confidences[idx[a]] < confidences[idx[b]] })
-	return idx
 }

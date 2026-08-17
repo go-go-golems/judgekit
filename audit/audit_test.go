@@ -72,17 +72,6 @@ func makeInstance(t *testing.T, id string) eval.Instance {
 	return inst
 }
 
-func makeProbe(t *testing.T, id string, baseValue float64, baseLabel assessment.SupportLabel, variantValue float64, variantLabel assessment.SupportLabel) Probe {
-	t.Helper()
-	return Probe{
-		ID:              id,
-		Kind:            Repeat,
-		BaseInstance:    makeInstance(t, "inst-base"),
-		VariantInstance: makeInstance(t, "inst-variant"),
-		Invariants:      []string{"same construct"},
-	}
-}
-
 func TestValidateProbe(t *testing.T) {
 	p := Probe{ID: "p1", Kind: Repeat, BaseInstance: makeInstance(t, "i1"), VariantInstance: makeInstance(t, "i2"), Invariants: []string{"x"}}
 	if err := ValidateProbe(&p); err != nil {

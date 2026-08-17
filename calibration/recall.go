@@ -34,7 +34,7 @@ func MatchByText(report assessment.Report) ClaimMatcher {
 		if !ok {
 			return false
 		}
-		return strings.ToLower(strings.TrimSpace(gold.Text)) == strings.ToLower(strings.TrimSpace(pc.Text))
+		return strings.EqualFold(strings.TrimSpace(gold.Text), strings.TrimSpace(pc.Text))
 	}
 }
 

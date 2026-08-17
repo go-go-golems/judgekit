@@ -39,7 +39,7 @@ type listPackage struct {
 // provider SDK, or sibling product. cmd/judgekit is intentionally excluded: it
 // is the only place allowed to import Glazed/Cobra to host the help system.
 func TestCorePackageBoundaries(t *testing.T) {
-	cmd := exec.Command("go", "list", "-json", "./spec", "./eval", "./protocol", "./assessment", "./judging", "./audit", "./calibration", "./internal/...")
+	cmd := exec.Command("go", "list", "-json", "./spec", "./eval", "./protocol", "./assessment", "./judging", "./audit", "./calibration", "./suite", "./internal/...")
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	out, err := cmd.Output()
 	if err != nil {

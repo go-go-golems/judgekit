@@ -14,30 +14,30 @@ import (
 // ReviewerIDs are retained even after adjudication so inter-rater agreement can
 // be measured; adjudication must not erase original disagreement.
 type GoldClaim struct {
-	InstanceID  string                 `json:"instance_id" yaml:"instance_id"`
-	Claim       assessment.Claim       `json:"claim" yaml:"claim"`
+	InstanceID  string                  `json:"instance_id" yaml:"instance_id"`
+	Claim       assessment.Claim        `json:"claim" yaml:"claim"`
 	Label       assessment.SupportLabel `json:"label" yaml:"label"`
-	ReviewerIDs []string               `json:"reviewer_ids" yaml:"reviewer_ids"`
-	Adjudicated bool                   `json:"adjudicated" yaml:"adjudicated"`
+	ReviewerIDs []string                `json:"reviewer_ids" yaml:"reviewer_ids"`
+	Adjudicated bool                    `json:"adjudicated" yaml:"adjudicated"`
 }
 
 // GoldDimension is one human-labeled dimension value or label for one instance
 // and construct, with the reviewers who produced it.
 type GoldDimension struct {
-	InstanceID  string            `json:"instance_id" yaml:"instance_id"`
-	ConstructID spec.ConstructID  `json:"construct_id" yaml:"construct_id"`
-	Value       *float64          `json:"value,omitempty" yaml:"value,omitempty"`
-	Label       string            `json:"label,omitempty" yaml:"label,omitempty"`
-	ReviewerIDs []string          `json:"reviewer_ids" yaml:"reviewer_ids"`
+	InstanceID  string           `json:"instance_id" yaml:"instance_id"`
+	ConstructID spec.ConstructID `json:"construct_id" yaml:"construct_id"`
+	Value       *float64         `json:"value,omitempty" yaml:"value,omitempty"`
+	Label       string           `json:"label,omitempty" yaml:"label,omitempty"`
+	ReviewerIDs []string         `json:"reviewer_ids" yaml:"reviewer_ids"`
 }
 
 // GoldSet is a collection of gold claims and dimensions for a calibration
 // dataset, content-addressed so a calibration report can pin the exact labels
 // it was computed against.
 type GoldSet struct {
-	Claims     []GoldClaim    `json:"claims" yaml:"claims"`
+	Claims     []GoldClaim     `json:"claims" yaml:"claims"`
 	Dimensions []GoldDimension `json:"dimensions,omitempty" yaml:"dimensions,omitempty"`
-	Digest     string         `json:"digest" yaml:"digest"`
+	Digest     string          `json:"digest" yaml:"digest"`
 }
 
 // ValidateGoldClaim returns nil when g is a well-formed gold claim.
