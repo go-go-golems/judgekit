@@ -43,7 +43,7 @@ abstract construct
   -> evaluation protocol         (protocol)
   -> evaluation instance + evidence (eval)
   -> structured assessment        (assessment)
-  -> statistical audit/calibration (future)
+  -> statistical audit/calibration (audit, calibration)
   -> application decision         (outside judgekit)
 ```
 
@@ -62,6 +62,10 @@ makes the intermediate steps explicit, typed, and reproducible.
 - Strict structured-output parsing, repair, and caching (`judging`,
   `internal/strictdecode`).
 - Deterministic semantic identities and strict file loaders (`internal/`).
+- Reliability and bias probes, disagreement reports, and panels (`audit`).
+- Calibration: gold records, extraction recall, confusion, Brier, ECE
+  (`calibration`).
+- Acyclic evaluator suites with concurrent execution (`suite`).
 
 ## What judgekit does not own
 
@@ -86,14 +90,20 @@ eval/        what an evaluator observes
 protocol/    how an evaluator measures
 assessment/  what an evaluator produces
 judging/     running evaluators
+audit/       reliability and bias probes
+calibration/ calibration against human labels
+suite/       combining evaluators
 internal/    canonicaljson, strictdecode, identifier helpers
 ```
 
 Dependency direction: `spec`, `eval`, and `protocol` are parallel and depend
 only on the standard library plus internal helpers. `assessment` depends on
-`spec` and `eval`. `judging` depends on all four. A boundary test at the module
-root rejects forbidden imports (frameworks, provider SDKs, sibling products)
-in every core package.
+`spec` and `eval`. `judging` depends on all four. `audit` depends on `eval`,
+`assessment`, `spec`, and `judging` (panels use the `Judge` interface).
+`calibration` depends on `assessment` and `spec`. `suite` depends on `eval`,
+`assessment`, and `judging` (plus `golang.org/x/sync/errgroup` for concurrent
+execution). A boundary test at the module root rejects forbidden imports
+(frameworks, provider SDKs, sibling products) in every core package.
 
 ## Key invariants
 
@@ -134,7 +144,7 @@ as immutable. A reader can prove which inputs and protocol produced a number.
 ### Caching is not reliability
 
 Caching improves reproducibility and cost control. A cached wrong verdict is
-stable but unreliable. Reliability is a future `audit` concern (repeat, order,
+stable but unreliable. Reliability is an `audit` concern (repeat, order,
 and paraphrase probes with disagreement reports).
 
 ## Two kinds of construct aggregation
@@ -158,6 +168,44 @@ evidence-kind overlap, unknown JSON fields, trailing data, unknown evidence
 references, invalid spans, and non-finite values all produce errors rather than
 silent best-effort behavior. Only structural failures (bad JSON shape) are
 repaired by default; semantic failures surface and stop.
+
+## Reliability, calibration, and suites
+
+Three packages sit above the judging path and consume reports rather than
+calling providers.
+
+### Reliability and bias (`audit`)
+
+Reliability is consistency, not correctness. A cached wrong verdict is stable
+but unreliable. The `audit` package runs a judge over a base instance and a
+variant that changes only something that should not affect the construct, then
+compares the reports. A `Probe` must state its `Invariants` so a found
+sensitivity can be localized. `Reliability` aggregates per-construct agreement
+and mean absolute delta across a probe set - never one "reliability score". A
+`Panel` runs several judges over one instance and preserves every member
+report plus a pairwise agreement matrix; majority vote is an aggregation, not
+independent truth.
+
+### Calibration (`calibration`)
+
+Calibration links reports to human or objective labels. `GoldClaim` and
+`GoldDimension` retain reviewer identity so inter-rater agreement can be
+measured; adjudication does not erase original disagreement. `Calibrate`
+computes extraction recall (a judge can look accurate by extracting fewer
+claims), a confusion matrix over matched claims, sensitivity, specificity,
+the false-support rate, and Brier/ECE over claims with confidence. Brier and
+ECE are `*float64` and nil when the protocol emits no confidence - a 1-5
+ordinal score is not a probability.
+
+### Evaluator suites (`suite`)
+
+A suite combines multiple evaluators over one instance without collapsing
+their reports. `Evaluator` declares `DependsOn` so a support judge may consume a
+claim extractor's output only when that edge is declared. `Suite.Validate`
+rejects cycles and unknown dependencies. `Suite.Run` dispatches independent
+evaluators concurrently via `errgroup` and runs dependents after their
+dependencies, retaining each report keyed by evaluator name. The suite digest
+is a function of the graph structure, not declaration order.
 
 ## Troubleshooting
 

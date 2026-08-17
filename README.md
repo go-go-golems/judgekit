@@ -54,6 +54,9 @@ judgekit/
   protocol/    how an evaluator measures: model, prompts, decoding, ordering, retry
   assessment/  what an evaluator produces: claims, three-way support, dimensions, reports
   judging/     running evaluators: provider-neutral interfaces and the two-stage claim judge
+  audit/       reliability and bias: probes, disagreement reports, panels
+  calibration/ calibration: gold records, extraction recall, confusion, Brier, ECE
+  suite/       combining evaluators: acyclic graph, concurrent execution
   internal/    canonicaljson, strictdecode, identifier helpers (not importable outside the module)
   cmd/judgekit/  thin CLI hosting the Glazed help system
   pkg/doc/     user guide, getting-started tutorial, developer reference (Glazed help entries)
@@ -145,11 +148,28 @@ the instance; the report is sealed with a content-addressed digest.
 
 ## Calibrating a protocol
 
-Calibration (gold records, extraction recall, confusion matrices, Brier score,
-ECE) is planned for the `calibration` package. It is intentionally separate
-from the judging path: a judge can be reliable but invalid, and a calibrated
-judge is still not ground truth. See `GLOSSARY.md` and the design doc for the
-planned API.
+Calibration links judgekit reports to human or objective labels. The
+`calibration` package computes extraction recall (a judge can look accurate by
+extracting fewer claims), confusion matrices, sensitivity, specificity, the
+false-support rate, the Brier score, and expected calibration error. Brier
+and ECE apply only when the protocol emits confidence probabilities; a 1-5
+ordinal score is not a probability.
+
+```go
+report, err := calibration.Calibrate(calibration.CalibrateInput{
+    Gold:           goldSet,          // human-labeled claims, content-addressed
+    Reports:        reportsByInstance, // the model's reports keyed by instance ID
+    ProtocolDigest: protoDoc.Digest,
+    Bins:           10,
+})
+// report.ExtractionRecall, report.Sensitivity, report.BrierScore, report.ECE
+```
+
+Reliability is separate from caching: a cached wrong verdict is stable but
+unreliable. The `audit` package runs a judge over base/variant instances that
+differ only in something that should not affect the construct, compares the
+reports, and reports per-construct agreement and mean absolute delta - never
+one "reliability score". See `GLOSSARY.md` and the design doc for the full API.
 
 ## Help and docs
 
@@ -174,7 +194,8 @@ required. See [`AGENT.md`](AGENT.md) for layout and conventions and the
 ## Status
 
 v0 implements the core value packages (`spec`, `eval`, `protocol`,
-`assessment`) and the two-stage `judging.ClaimJudge`. Reliability probes
-(`audit`), calibration (`calibration`), evaluator suites (`suite`), and
-optional provider adapters are planned and described in the design doc. No
-public API stability is promised before the first CoinVault pilot.
+`assessment`), the two-stage `judging.ClaimJudge`, the `audit` reliability/bias
+package, the `calibration` package, and the `suite` package for combining
+evaluators. Optional provider adapters are the main remaining piece and are
+described in the design doc. No public API stability is promised before the
+first CoinVault pilot.

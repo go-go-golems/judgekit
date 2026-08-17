@@ -25,7 +25,7 @@ abstract construct
   -> evaluation protocol         (protocol)
   -> evaluation instance + evidence (eval)
   -> structured assessment        (assessment)
-  -> statistical audit/calibration (future: audit, calibration)
+  -> statistical audit/calibration (audit, calibration)
   -> application decision         (outside judgekit)
 ```
 
@@ -130,7 +130,7 @@ decisions.
 critiques, or evaluators. It may score a judge's reasoning, compare a verdict to
 a reference, or select among judges.
 
-**In judgekit:** future `audit`/`calibration` packages will provide the
+**In judgekit:** the `audit` and `calibration` packages provide the
 measurement-side of this (reliability, bias probes, confusion matrices).
 Meta-evaluation of *reasoning* is out of scope for v0.
 
@@ -171,7 +171,7 @@ of the same underlying object agree when irrelevant conditions vary (decoding
 randomness, candidate order, prompt paraphrase, judge model, task sampling).
 Reliability is consistency, not correctness.
 
-**In judgekit:** future `audit` package (repeat/order/paraphrase probes,
+**In judgekit:** the `audit` package (repeat/order/paraphrase probes,
 disagreement reports). Cache determinism is *not* reliability — a cached wrong
 verdict is stable but unreliable.
 
@@ -191,7 +191,7 @@ data and human labels.
 empirical frequency under a specified population. It concerns the meaning of
 probabilities, not merely whether the most likely label is correct.
 
-**In judgekit:** future `calibration` package (gold records, extraction
+**In judgekit:** the `calibration` package (gold records, extraction
 recall, confusion matrices, Brier score, ECE). A 1–5 ordinal score must not be
 treated as a probability without an explicit calibrated mapping.
 
@@ -201,7 +201,7 @@ affects the measurement but is not part of the intended construct (position,
 length, formatting, model identity, style). A bias is a systematic dependence
 on such a feature, or a misweighting of a feature that should matter.
 
-**In judgekit:** future `audit` bias probes (position, verbosity, style,
+**In judgekit:** the `audit` bias probes (position, verbosity, style,
 self-preference, authority). A probe must state what remains semantically
 invariant.
 
@@ -246,8 +246,9 @@ prompt-design choice; judgekit provides the staging, not the prompt.
 | Critic | `judging` | `Critic` |
 | Verifier | `judging` | `Verifier` |
 | Generator (provider-neutral) | `judging` | `Generator` |
-| Reliability | `audit` (future) | — |
-| Calibration | `calibration` (future) | — |
+| Evaluator suite | `suite` | `Suite`, `Evaluator`, `Results` |
+| Reliability | `audit` | `ReliabilityReport`, `Probe`, `Panel` |
+| Calibration | `calibration` | `GoldSet`, `Report`, `Confusion` |
 
 ---
 

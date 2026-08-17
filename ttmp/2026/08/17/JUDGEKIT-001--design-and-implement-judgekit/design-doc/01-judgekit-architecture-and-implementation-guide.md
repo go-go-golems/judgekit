@@ -22,8 +22,22 @@ RelatedFiles:
       Note: Sealed assessment reports
     - Path: repo://assessment/validate.go
       Note: Three-way support and cross-reference validation
+    - Path: repo://audit/panel.go
+      Note: Panels preserving every member report
+    - Path: repo://audit/probes.go
+      Note: Reliability probes with stated invariants
+    - Path: repo://audit/reliability.go
+      Note: Reliability aggregation and sealed report
     - Path: repo://boundary_test.go
       Note: Core dependency boundary test
+    - Path: repo://calibration/confusion.go
+      Note: 2x2 confusion and sensitivity/specificity/false-support-rate
+    - Path: repo://calibration/gold.go
+      Note: Gold records retaining reviewer identity
+    - Path: repo://calibration/report.go
+      Note: Calibrate entry point and sealed calibration report
+    - Path: repo://calibration/scoring.go
+      Note: Brier score and expected calibration error
     - Path: repo://cmd/judgekit/main.go
       Note: Thin Glazed help-host CLI
     - Path: repo://eval/instance.go
@@ -42,6 +56,8 @@ RelatedFiles:
       Note: Measurement contracts and aggregation methods
     - Path: repo://spec/validate.go
       Note: Fail-closed contract validation
+    - Path: repo://suite/suite.go
+      Note: Acyclic evaluator suites with concurrent execution
     - Path: ws://coinvault/internal/knowledge/judge.go
       Note: Primary extraction source for judging mechanics
     - Path: ws://coinvault/ttmp/2026/08/17/COINVAULT-045--study-self-optimization-and-exploitable-evaluator-errors/design-doc/09-structured-evaluation-and-optimization-refactor-for-coinvault.md
@@ -56,6 +72,7 @@ LastUpdated: 2026-08-17T18:55:00-04:00
 WhatFor: Define judgekit's scope, package boundaries, APIs, invariants, migration path, tests, and integration responsibilities before implementation begins.
 WhenToUse: When bootstrapping judgekit, reviewing its public API, extracting evaluation code from CoinVault, or integrating judgekit with ragopt and other products.
 ---
+
 
 
 

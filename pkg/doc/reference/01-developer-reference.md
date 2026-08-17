@@ -23,9 +23,10 @@ and the getting-started tutorial.
 ## Public surface
 
 Only the top-level packages (`spec`, `eval`, `protocol`, `assessment`,
-`judging`) are public. Everything under `internal/` (`canonicaljson`,
-`strictdecode`, `identifier`) is not importable outside the module; if you need
-that behavior, it will be promoted deliberately.
+`judging`, `audit`, `calibration`, `suite`) are public. Everything under
+`internal/` (`canonicaljson`, `strictdecode`, `identifier`) is not importable
+outside the module; if you need that behavior, it will be promoted
+deliberately.
 
 ## spec — what an evaluator measures
 
@@ -240,6 +241,94 @@ func (g *myGen) Generate(ctx context.Context, req judging.GenerationRequest) (ju
 
 `req.Step` ("extract", "support") lets you route by stage or observe usage. The
 prompt is fully rendered by your `ClaimProtocol`.
+
+## audit — reliability and bias
+
+```go
+type Probe struct {
+    ID              string
+    Kind            ProbeKind   // repeat | evidence_order | candidate_order | ...
+    BaseInstance    eval.Instance
+    VariantInstance eval.Instance
+    Invariants      []string    // required: what must not change
+}
+
+type ReliabilityReport struct {
+    TotalPairs          int
+    ClaimLabelAgreement float64
+    DimensionAgreement  map[spec.ConstructID]float64
+    MeanAbsoluteDelta   map[spec.ConstructID]float64
+    Disagreements       []Disagreement
+    Digest              string
+}
+
+type Panel struct {
+    Judges []judging.Judge
+    Policy AggregationPolicy
+}
+```
+
+Entry points: `audit.NewProbeSet`, `audit.RunProbe`, `audit.Reliability`,
+`audit.CompareReports`, `(*Panel).Evaluate`, `audit.ValidateReport`.
+
+Invariants: a probe must state its invariants; reliability reports carry
+per-construct breakdowns; panels preserve every member report. `audit` runs a
+`judging.Judge` (provider-neutral) over base/variant instances; it never calls
+providers directly.
+
+## calibration — agreement with labels
+
+```go
+type GoldSet struct {
+    Claims []GoldClaim    // retain ReviewerIDs; Adjudicated does not erase them
+    Dimensions []GoldDimension
+    Digest string
+}
+
+type Report struct {
+    ExtractionRecall float64
+    Sensitivity      float64
+    Specificity       float64
+    FalseSupportRate float64
+    BrierScore       *float64  // nil when no confidence emitted
+    ECE              *float64
+    Digest           string
+}
+```
+
+Entry points: `calibration.Calibrate`, `calibration.ConfusionFromClaims`,
+`calibration.ExtractionRecall`, `calibration.BrierScore`,
+`calibration.ExpectedCalibrationError`, `calibration.ValidateReport`.
+
+Invariants: gold records retain reviewer identity; extraction recall is over
+all gold claims while confusion is over matched claims; Brier/ECE apply only
+when confidence is present. `calibration` consumes reports and gold records; it
+does not run judges.
+
+## suite — combining evaluators
+
+```go
+type Evaluator interface {
+    Name() string
+    DependsOn() []string
+    Evaluate(ctx context.Context, inst eval.Instance, results Results) (assessment.Report, error)
+}
+
+type Suite struct {
+    APIVersion string
+    Name       string
+    Evaluators []Evaluator
+    Digest     string
+}
+```
+
+Entry points: `suite.NewSuite`, `(*Suite).Validate`, `(*Suite).Run`,
+`suite.JudgeEvaluator` (adapts a `judging.Judge` to a dependency-free
+`Evaluator`).
+
+Invariants: the dependency graph must be acyclic; independent evaluators run
+concurrently via `errgroup`; each report retains its own protocol identity; the
+suite digest is a function of the graph structure, not declaration order.
 
 ## Integration boundaries
 

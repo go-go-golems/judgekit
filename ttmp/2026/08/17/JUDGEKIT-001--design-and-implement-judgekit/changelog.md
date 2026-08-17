@@ -36,3 +36,14 @@ Implemented the judgekit core: normalized the repo, added internal canonical pri
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/cmd/judgekit/main.go — Help-host CLI
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/judging/claimjudge.go — Two-stage claim judge
 
+
+## 2026-08-17
+
+Implemented the remaining core packages: calibration (gold records, extraction recall, confusion, Brier, ECE), audit (reliability probes, disagreement reports, panels), and suite (acyclic evaluator graph, concurrent execution). All pass tests and lint; boundary test extended to cover all eight core packages.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/audit/reliability.go — Reliability aggregation
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/calibration/report.go — Calibrate entry point
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/suite/suite.go — Acyclic evaluator suites
+
