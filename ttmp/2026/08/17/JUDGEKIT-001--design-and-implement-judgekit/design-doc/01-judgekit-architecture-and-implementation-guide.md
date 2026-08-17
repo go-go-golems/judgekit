@@ -14,10 +14,34 @@ Owners: []
 RelatedFiles:
     - Path: repo://AGENT.md
       Note: Repository implementation constraints
+    - Path: repo://GLOSSARY.md
+      Note: Textbook-grounded construct definitions
     - Path: repo://README.md
       Note: Current template README requiring replacement
+    - Path: repo://assessment/report.go
+      Note: Sealed assessment reports
+    - Path: repo://assessment/validate.go
+      Note: Three-way support and cross-reference validation
+    - Path: repo://boundary_test.go
+      Note: Core dependency boundary test
+    - Path: repo://cmd/judgekit/main.go
+      Note: Thin Glazed help-host CLI
+    - Path: repo://eval/instance.go
+      Note: Evaluation instance types
     - Path: repo://go.mod
       Note: Current unnormalized module and dependency baseline
+    - Path: repo://judging/claimjudge.go
+      Note: Two-stage claim judge
+    - Path: repo://judging/interfaces.go
+      Note: Provider-neutral Judge/Generator interfaces
+    - Path: repo://pkg/doc/tutorials/01-getting-started.md
+      Note: Getting-started Glazed help entry
+    - Path: repo://protocol/protocol.go
+      Note: Complete protocol identity
+    - Path: repo://spec/contract.go
+      Note: Measurement contracts and aggregation methods
+    - Path: repo://spec/validate.go
+      Note: Fail-closed contract validation
     - Path: ws://coinvault/internal/knowledge/judge.go
       Note: Primary extraction source for judging mechanics
     - Path: ws://coinvault/ttmp/2026/08/17/COINVAULT-045--study-self-optimization-and-exploitable-evaluator-errors/design-doc/09-structured-evaluation-and-optimization-refactor-for-coinvault.md
@@ -32,6 +56,7 @@ LastUpdated: 2026-08-17T18:55:00-04:00
 WhatFor: Define judgekit's scope, package boundaries, APIs, invariants, migration path, tests, and integration responsibilities before implementation begins.
 WhenToUse: When bootstrapping judgekit, reviewing its public API, extracting evaluation code from CoinVault, or integrating judgekit with ragopt and other products.
 ---
+
 
 
 # Judgekit Architecture and Implementation Guide

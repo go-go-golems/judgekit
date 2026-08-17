@@ -211,3 +211,199 @@ With the repo normalized, I added the three internal helper packages that every 
 - Identifier regex: `^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$`.
 - Digest format: `sha256:` + lowercase hex of SHA-256 over canonical bytes.
 - No external dependencies; only stdlib (`crypto/sha256`, `encoding/json`, `math`, `sort`, `regexp`).
+
+## Step 4: Implement the spec package (Phase 2)
+
+spec owns the first link of the inference chain: what an evaluator measures. I added constructs and measurement contracts with strict validation, dual digests, and a strict YAML/JSON loader, using a CoinVault-style faithfulness fixture as the proving target.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+**Commit (code):** 62c54a1 — "feat(spec): add constructs and measurement contracts with strict loading"
+
+### What I did
+- Added `Construct`/`ConstructID`/`Direction`/`Range` and `MeasurementContract` (evidence policy, labels, aggregations, exclusions, empty policy).
+- Strict validation: supported `api_version`, duplicate construct IDs, dangling label/aggregation/exclusion references, evidence-kind overlap, fraction aggregations referencing declared labels (comma-separated label lists so faithfulness = entailed / (entailed+contradicted+insufficient)).
+- Dual digests: `SemanticDigest` (canonical JSON, order-independent) and `ByteDigest` (raw bytes).
+- Strict `LoadContract`/`LoadContractFromBytes` for `.json`/`.yaml`/`.yml` with unknown-field rejection in both formats.
+- Fixture `spec/testdata/faithfulness.yaml` mirroring a CoinVault faithfulness contract.
+
+### What worked
+- `gopkg.in/yaml.v3` round-trips `map[ConstructID][]string` keys correctly, so typed map keys survive YAML.
+- `go test ./spec` green; semantic digest is stable across YAML key order but changes on semantic change.
+
+### What didn't work
+- First fixture used a single-label denominator for fraction; faithfulness needs a label SET, so I extended the validator to accept comma-separated label lists.
+
+### What was tricky to build
+- Keeping `spec` value types stdlib-only while supporting strict YAML. Resolution: only `load.go` imports `yaml.v3`; the boundary test forbids frameworks, not data-format libraries.
+
+### What warrants a second pair of eyes
+- `canonicaljson` re-encodes numbers as float64, losing int64 precision >2^53. Acceptable for judgekit value ranges; confirm no construct uses large integer identity.
+- The supported `api_version` is a single constant (`judgekit.measurement/v1`); a future incompatible schema will need a migration path rather than silent acceptance.
+
+### Code review instructions
+- Start at `spec/validate.go` (`ValidateContract`), then `spec/digest.go`, then `spec/load.go`.
+- Run `GOWORK=off go test ./spec`.
+
+## Step 5: Implement the eval package (Phase 3)
+
+eval defines one concrete item being judged. It depends only on stdlib + internal helpers (parallel to spec, not on it).
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+**Commit (code):** 85d832f — "feat(eval): add artifacts, evidence, required facts, and instances"
+
+### What I did
+- `Artifact` (content-addressed text/URI; `NewTextArtifact` computes SHA-256 + size; validation rejects stale digests), `EvidenceItem`/`EvidenceSet` (ordered, unique IDs, provenance), `RequiredFact`, `Instance`.
+- Cross-reference validation: `RequiredFact.EvidenceIDs` must resolve to real evidence item IDs.
+- Non-circular content digests for evidence sets and instances; `NewEvidenceSet`/`NewInstance` compute and verify digests.
+
+### What worked
+- All eval tests green; instance digest is deterministic and changes with metadata.
+
+### What was tricky to build
+- The instance digest must exclude its own `Digest` field to avoid circularity; I used a separate `instanceDigestInput` struct.
+
+### Code review instructions
+- Start at `eval/validate.go` (`ValidateInstance` cross-references), `eval/digest.go`.
+
+## Step 6: Implement the protocol package (Phase 4)
+
+protocol identifies how an evaluator measures. It references the contract by digest only, so it does not import spec.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+**Commit (code):** 55d6788 — "feat(protocol): add complete evaluator protocol identity"
+
+### What I did
+- `ModelIdentity`, `DecodingPolicy`, `RetryPolicy`, `Protocol` (api_version, name, measurement_digest, prompt digests, decoding, evidence_order, parser/aggregator versions, retry).
+- Validation: supported version, identifier name, sha256 digests, shuffled-evidence-order requires a seed, positive max_tokens, retry attempts >= 1.
+- Dual digests + strict loader; digest stable across prompt-map insertion order, changes on any semantic field.
+
+### What didn't work
+- First `ByteDigest` used `canonicaljson.MustSum(raw)` which base64-encodes `[]byte`; fixed to raw-byte SHA-256 (same bug pattern as spec, caught here first).
+- `&baseProtocol()` in a test cannot take the address of a function-call result; assigned to a variable first.
+
+### Code review instructions
+- `protocol/validate.go`, `protocol/load.go`, `protocol/protocol_test.go`.
+
+## Step 7: Implement the assessment package (Phase 5)
+
+assessment is the convergence point: it imports spec + eval but not judging.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+**Commit (code):** d98b80d — "feat(assessment): add claims, three-way support, dimensions, and sealed reports"
+
+### What I did
+- `Claim`/`Span`, three-way `SupportLabel` (entailed/contradicted/insufficient), `ClaimAssessment` (entailed+contradicted require cited evidence), `DimensionResult`, sealed `Report`.
+- Fail-closed validation: duplicate claims, unknown claim results, missing results, invalid spans, non-finite values, not-applicable-with-value, evidence references outside an allowed set supplied by the judging layer.
+- `Seal` computes a non-circular digest; `ValidateReport` checks a sealed report. `EvidenceIDSet` builds the allowed set from an instance's evidence.
+
+### What was tricky to build
+- Sealing vs. the digest-presence check: `ValidateReport` requires a digest, but `Seal` validates before the digest exists. Split into `validateReportBody` (all checks except digest presence) + `ValidateReport` (body + digest check); `Seal` calls the body, computes the digest, sets it.
+
+### What didn't work
+- A test passed an empty allowed-evidence set while another verdict still cited `e1`, causing a false "unknown evidence" failure; fixed the test to allow `e1`.
+
+### Code review instructions
+- `assessment/validate.go` (`ValidateReport`, `ValidateClaimAssessment`), `assessment/digest.go` (`Seal`).
+
+## Step 8: Implement the judging package and boundary test (Phase 6)
+
+judging runs evaluators and depends on all value packages. It is the only place where the model is called, through a provider-neutral `Generator`.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+**Commit (code):** 96a72ef — "feat(judging): add provider-neutral judge interfaces and two-stage claim judge"
+
+### What I did
+- `Generator`/`Judge`/`Critic`/`Verifier` interfaces, `CacheKey`+`Cache` (`NoopCache`, JSON-backed `MemoryCache`), strict-parsing re-exports, `DefaultRepairer`.
+- `FakeGenerator` (no credentials) and the two-stage `ClaimJudge`: extract claims (evidence hidden), judge support against evidence, aggregate per contract (fraction counts claim labels; direct takes model-emitted dimensions), seal the report.
+- Repair: structural failures retry with a repaired prompt; semantic failures fail closed at seal.
+- `spec.MethodDirect` added for non-claim-aggregated constructs (relevance, abstention).
+- `boundary_test.go` at the module root: runs `go list -json` over core packages and rejects forbidden imports (glazed, cobra, bubbletea, geppetto, pinocchio, coinvault, ragopt, ragkit, provider SDKs). `cmd/judgekit` is intentionally excluded so it can host Glazed help.
+
+### What worked
+- End-to-end claim-judge test: two claims → faithfulness 0.5, relevance 0.9, abstention "attempted"; extractor prompt verified to not leak evidence; caching test confirms no regeneration on a second run; repair test confirms a malformed extract is retried once; bad-label test confirms fail-closed.
+
+### What didn't work
+- Used `spec.MethodDirect` before declaring it; added it to `spec/contract.go` and `validMethods`.
+- `errExhausted` referenced in the sequence generator test before being defined; added it in the test file.
+
+### What was tricky to build
+- Generic `generateAndDecode[T]` must be a free function (Go methods cannot have type parameters); it takes the `*ClaimJudge` to access cache/repair/protocol.
+- Caching + repair interaction: a repaired prompt changes the prompt digest and thus the cache key, so the repaired generation is a new cache entry rather than a stale hit.
+
+### What warrants a second pair of eyes
+- The `MemoryCache.Load` JSON-round-trips values; for very large raw responses this is wasteful but correct. A production cache should store raw bytes.
+- `generateAndDecode` retries on every structural error up to `MaximumAttempts`; confirm that semantic-but-decoded-as-structural cases (e.g., a valid JSON object with the wrong shape) are caught at seal, not retried indefinitely.
+
+### Code review instructions
+- `judging/claimjudge.go` (`Evaluate`, `generateAndDecode`, `aggregate`), `judging/cache.go`, `judging/repair.go`, `boundary_test.go`.
+- Run `GOWORK=off go test ./...` (all packages, including the boundary test).
+
+## Step 9: Add GLOSSARY, README, help entries, help-host CLI, and example (docs)
+
+With the core implemented and tested, I wrote the intern-facing documentation the user asked for and a thin CLI so the Glazed help entry is real and queryable rather than just a markdown file.
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+**Commit (code):** a8011c0 — "docs: add GLOSSARY, README, user guide, getting-started help, developer reference, and help-host CLI"
+
+### What I did
+- `GLOSSARY.md`: measurement-theory terms (construct, latent utility, proxy, protocol, judge/critic/verifier, reliability, validity, calibration, bias, construct shift) grounded in the imported textbook Chapter 1 reader edition (Definitions 1.1–1.19), each mapped to a judgekit type/package.
+- `README.md`: problem, non-goals, package map, quick start (contract, generator adapter, claim judge), status.
+- `pkg/doc/`: three Glazed help entries — `tutorials/01-getting-started.md` (Tutorial, slug `getting-started`), `topics/01-user-guide.md` (GeneralTopic, slug `user-guide`), `reference/01-developer-reference.md` (GeneralTopic, slug `developer-reference`), each with frontmatter per the glazed-help-authoring skill.
+- `pkg/doc/doc.go`: `embed` of the help entries + `AddDocToHelpSystem`.
+- `cmd/judgekit/main.go`: thin CLI wiring `help.NewHelpSystem()` + `doc.AddDocToHelpSystem` + `help_cmd.SetupCobraRootCommand` + `logging.AddLoggingSectionToRootCommand`, so `judgekit help <slug>` works.
+- `examples/claim-judge/`: runnable end-to-end example (`contract.yaml` + `example_test.go`) with a fake generator.
+
+### Why
+- The user explicitly asked for a GLOSSARY using the textbook, an updated README, a user guide, a getting-started Glazed help entry, and a developer reference. The glazed-help-authoring skill's definition of done requires help entries to be wired into a Cobra root, not left as loose markdown — hence the thin CLI.
+
+### What worked
+- `judgekit help getting-started|user-guide|developer-reference` all render via the embedded FS.
+- Full test suite and the boundary test still pass after adding Glazed/Cobra as dependencies for the CLI only.
+
+### What was tricky to build
+- Reconciling the design's "no initial CLI" decision with the user's request for a Glazed help entry (which the help skill wants wired into Cobra). Resolution: keep core provider-neutral and stdlib-only; add `cmd/judgekit` as the only place allowed to import Glazed/Cobra, hosting just help. The boundary test excludes `cmd/` and `pkg/doc`, so core stays clean.
+- `go:embed` can only embed within a package's subtree, so the embed lives in `pkg/doc/doc.go` (next to the markdown) and the CLI imports it, rather than embedding from `cmd/judgekit`.
+
+### What warrants a second pair of eyes
+- The CLI depends on Glazed v1.4.1 (a large transitive tree). That is acceptable because it is confined to `cmd/` and `pkg/doc`; confirm no core package transitively pulls it (the boundary test covers direct imports; a transitive check via `go list -deps` of core packages would be stronger).
+
+### Code review instructions
+- `GLOSSARY.md`, `README.md`, `pkg/doc/{topics,tutorials,reference}/*.md`, `pkg/doc/doc.go`, `cmd/judgekit/main.go`, `examples/claim-judge/`.
+- Run `GOWORK=off go run ./cmd/judgekit help getting-started` and `GOWORK=off go test ./examples/claim-judge -v`.
+
+## Step 10: Ticket bookkeeping and validation
+
+### Prompt Context
+
+**User prompt (verbatim):** (see Step 2)
+
+### What I did
+- Related 12 key implementation/doc files to the design doc via `docmgr doc relate`.
+- Added and checked implementation tasks (std1, qoyn); updated the changelog.
+- `docmgr doctor --ticket JUDGEKIT-001 --stale-after 30` passes; all tasks complete.
+
+### What worked
+- All JUDGEKIT-001 tasks complete; doctor clean; `GOWORK=off go test ./...` green including the boundary test.
+
+### What should be done in the future
+- Implement the `audit` (reliability/bias probes, panels) and `calibration` (gold, extraction recall, confusion, Brier, ECE) packages per the design's Phases 8–9.
+- Add fuzz tests for `canonicaljson`, `strictdecode`, and report sealing per the design's Phase 11.2.
+- Run a CoinVault pilot that ports the claim extraction + support path onto judgekit and removes the duplicated local generic structures (design Phase 7), gated by characterization fixtures.

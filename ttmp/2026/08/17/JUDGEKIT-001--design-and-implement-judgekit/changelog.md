@@ -25,3 +25,14 @@ Validated and uploaded the Judgekit Architecture and Implementation Guide bundle
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/01-judgekit-architecture-and-implementation-guide.md — Completed and delivered architecture guide
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Recorded initialization, validation, upload failure, and successful delivery
 
+
+## 2026-08-17
+
+Implemented the judgekit core: normalized the repo, added internal canonical primitives, and built spec/eval/protocol/assessment/judging with strict validation, dual digests, three-way support, a provider-neutral two-stage claim judge, and a boundary test. Added GLOSSARY.md (textbook-grounded), README, a user guide, a getting-started Glazed help entry, a developer reference, a thin help-host CLI (cmd/judgekit), and a runnable claim-judge example. All tests and the boundary test pass.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/GLOSSARY.md — Construct glossary
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/cmd/judgekit/main.go — Help-host CLI
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/judging/claimjudge.go — Two-stage claim judge
+
