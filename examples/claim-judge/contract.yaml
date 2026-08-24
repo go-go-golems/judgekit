@@ -32,6 +32,9 @@ labels:
     - entailed
     - contradicted
     - insufficient
+  abstention:
+    - attempted
+    - abstained
 aggregations:
   faithfulness:
     method: fraction

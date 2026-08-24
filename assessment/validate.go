@@ -70,11 +70,22 @@ func ValidateClaimAssessment(a *ClaimAssessment, allowedEvidence map[string]stru
 	if a.Label != Insufficient && len(a.EvidenceIDs) == 0 {
 		return fmt.Errorf("claim assessment %q: %s verdict requires evidence_ids", a.ClaimID, a.Label)
 	}
-	if a.Confidence != nil {
-		c := *a.Confidence
-		if math.IsNaN(c) || math.IsInf(c, 0) || c < 0 || c > 1 {
-			return fmt.Errorf("claim assessment %q: confidence %g must be in [0,1]", a.ClaimID, c)
-		}
+	if err := validateProbability(a.ClaimID, "verdict_confidence", a.VerdictConfidence); err != nil {
+		return err
+	}
+	if err := validateProbability(a.ClaimID, "entailed_probability", a.EntailedProbability); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateProbability(claimID, field string, value *float64) error {
+	if value == nil {
+		return nil
+	}
+	v := *value
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 1 {
+		return fmt.Errorf("claim assessment %q: %s %g must be in [0,1]", claimID, field, v)
 	}
 	return nil
 }

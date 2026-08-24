@@ -62,6 +62,19 @@ func TestNewEvidenceSet(t *testing.T) {
 	}
 }
 
+func TestValidateEvidenceSetRejectsStaleDigest(t *testing.T) {
+	set, err := NewEvidenceSet([]EvidenceItem{
+		{ID: "e1", Kind: "knowledge", Content: NewTextArtifact("text/plain", "original"), SourceID: "s"},
+	}, "sha256:policy")
+	if err != nil {
+		t.Fatalf("NewEvidenceSet: %v", err)
+	}
+	set.Items[0].Content = NewTextArtifact("text/plain", "changed")
+	if err := ValidateEvidenceSet(&set); err == nil {
+		t.Errorf("accepted evidence set whose digest does not match its content")
+	}
+}
+
 func TestNewEvidenceSetRejectsDuplicateIDs(t *testing.T) {
 	items := []EvidenceItem{
 		{ID: "e1", Kind: "knowledge", Content: NewTextArtifact("text/plain", "a"), SourceID: "s"},
@@ -96,6 +109,20 @@ func TestNewInstance(t *testing.T) {
 	}
 	if err := ValidateInstance(&inst); err != nil {
 		t.Errorf("ValidateInstance: %v", err)
+	}
+}
+
+func TestValidateInstanceRejectsStaleDigest(t *testing.T) {
+	set, _ := NewEvidenceSet([]EvidenceItem{
+		{ID: "e1", Kind: "knowledge", Content: NewTextArtifact("text/plain", "ev"), SourceID: "s"},
+	}, "sha256:policy")
+	inst, err := NewInstance("inst-1", NewTextArtifact("text/plain", "q"), NewTextArtifact("text/plain", "a"), set, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewInstance: %v", err)
+	}
+	inst.Metadata = map[string]string{"changed": "true"}
+	if err := ValidateInstance(&inst); err == nil {
+		t.Errorf("accepted instance whose digest does not match its content")
 	}
 }
 

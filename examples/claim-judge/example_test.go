@@ -25,6 +25,10 @@ import (
 // instance) the evidence.
 type examplePrompts struct{}
 
+func (examplePrompts) TemplateDigest(step string) (string, error) {
+	return judging.PromptDigest("example-prompts/" + step + "/v1"), nil
+}
+
 func (examplePrompts) ExtractPrompt(inst eval.Instance) (string, error) {
 	return "Extract factual claims as {\"statements\":[...]}.\nQ: " + inst.Input.Text + "\nA: " + inst.Candidate.Text, nil
 }
@@ -54,7 +58,10 @@ func TestExampleClaimJudge(t *testing.T) {
 		Name:              "gec-faithfulness-v1",
 		MeasurementDigest: contract.Digest,
 		Model:             protocol.ModelIdentity{Provider: "fake", Model: "fake-1"},
-		PromptDigests:     map[string]string{"extract": "sha256:1", "support": "sha256:2"},
+		PromptDigests: map[string]string{
+			"extract": judging.PromptDigest("example-prompts/extract/v1"),
+			"support": judging.PromptDigest("example-prompts/support/v1"),
+		},
 		Decoding:          protocol.DecodingPolicy{MaxTokens: 1024},
 		EvidenceOrder:     protocol.EvidenceOrderAsGiven,
 		ParserVersion:     "strict-json-v1",
@@ -70,7 +77,11 @@ func TestExampleClaimJudge(t *testing.T) {
 	}
 	protoDoc := protocol.Document{Protocol: p, Digest: pdigest}
 
-	// 3. Build the evaluation instance.
+	// 3. Build the evaluation instance under the contract's evidence policy.
+	policyDigest, err := spec.EvidencePolicyDigest(&contract.Contract.EvidencePolicy)
+	if err != nil {
+		t.Fatalf("evidence policy digest: %v", err)
+	}
 	evidence, err := eval.NewEvidenceSet([]eval.EvidenceItem{
 		{
 			ID:       "e1",
@@ -78,7 +89,7 @@ func TestExampleClaimJudge(t *testing.T) {
 			Content:  eval.NewTextArtifact("text/plain", "Employees may carry over a maximum of five days."),
 			SourceID: "doc-1",
 		},
-	}, "sha256:policy")
+	}, policyDigest)
 	if err != nil {
 		t.Fatalf("evidence: %v", err)
 	}

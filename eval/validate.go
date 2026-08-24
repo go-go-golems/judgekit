@@ -65,8 +65,26 @@ func ValidateEvidenceItem(e *EvidenceItem) error {
 }
 
 // ValidateEvidenceSet returns nil when s is a well-formed evidence set: every
-// item is valid and item IDs are unique.
+// item is valid, item IDs are unique, and the stored digest matches the current
+// items and policy digest.
 func ValidateEvidenceSet(s *EvidenceSet) error {
+	if err := validateEvidenceSetBody(s); err != nil {
+		return err
+	}
+	if !strings.HasPrefix(s.Digest, "sha256:") {
+		return fmt.Errorf("evidence set: digest must be a sha256: digest")
+	}
+	want, err := EvidenceSetDigest(s.Items, s.PolicyDigest)
+	if err != nil {
+		return fmt.Errorf("evidence set: compute digest: %w", err)
+	}
+	if s.Digest != want {
+		return fmt.Errorf("evidence set: digest %q does not match content (want %q)", s.Digest, want)
+	}
+	return nil
+}
+
+func validateEvidenceSetBody(s *EvidenceSet) error {
 	if !strings.HasPrefix(s.PolicyDigest, "sha256:") {
 		return fmt.Errorf("evidence set: policy_digest must be a sha256: digest")
 	}
@@ -157,6 +175,13 @@ func ValidateInstance(i *Instance) error {
 	if !strings.HasPrefix(i.Digest, "sha256:") {
 		return fmt.Errorf("instance %q: digest must be a sha256: digest", i.ID)
 	}
+	want, err := InstanceDigest(i)
+	if err != nil {
+		return fmt.Errorf("instance %q: compute digest: %w", i.ID, err)
+	}
+	if i.Digest != want {
+		return fmt.Errorf("instance %q: digest %q does not match content (want %q)", i.ID, i.Digest, want)
+	}
 	return nil
 }
 
@@ -165,7 +190,7 @@ func ValidateInstance(i *Instance) error {
 // policy under which the set was admitted.
 func NewEvidenceSet(items []EvidenceItem, policyDigest string) (EvidenceSet, error) {
 	set := EvidenceSet{Items: items, PolicyDigest: policyDigest}
-	if err := ValidateEvidenceSet(&set); err != nil {
+	if err := validateEvidenceSetBody(&set); err != nil {
 		return EvidenceSet{}, err
 	}
 	digest, err := EvidenceSetDigest(items, policyDigest)

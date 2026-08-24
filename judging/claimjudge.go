@@ -18,8 +18,11 @@ import (
 
 // ClaimProtocol renders the two prompts for a two-stage claim judge. The
 // extraction prompt MUST NOT reveal the evidence; the support prompt receives
-// the claims and (through the instance) the evidence.
+// the claims and (through the instance) the evidence. TemplateDigest returns
+// the stable identity of the renderer/template for each step; the protocol
+// pins these identities while cache keys separately hash rendered prompt text.
 type ClaimProtocol interface {
+	TemplateDigest(step string) (string, error)
 	ExtractPrompt(inst eval.Instance) (string, error)
 	SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error)
 }
@@ -37,7 +40,7 @@ type ClaimJudge struct {
 	Clock    func() time.Time
 }
 
-var _ Judge = (*ClaimJudge)(nil)
+var _ ConfigurableJudge = (*ClaimJudge)(nil)
 
 func (j *ClaimJudge) now() time.Time {
 	if j.Clock != nil {
@@ -60,7 +63,10 @@ func (j *ClaimJudge) cache() Cache {
 	return NoopCache{}
 }
 
-func promptDigest(prompt string) string {
+// PromptDigest returns the content identity of prompt text. Protocol prompt
+// digests identify stable templates/renderers; cache keys use this function on
+// the fully rendered, instance-specific prompt.
+func PromptDigest(prompt string) string {
 	sum := sha256.Sum256([]byte(prompt))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
@@ -72,11 +78,12 @@ type extractPayload struct {
 
 // supportVerdict is one per-claim verdict in the support response.
 type supportVerdict struct {
-	Claim       int                     `json:"claim"` // 1-based index
-	Label       assessment.SupportLabel `json:"label"`
-	EvidenceIDs []string                `json:"evidence_ids"`
-	Reason      string                  `json:"reason"`
-	Confidence  *float64                `json:"confidence,omitempty"`
+	Claim               int                     `json:"claim"` // 1-based index
+	Label               assessment.SupportLabel `json:"label"`
+	EvidenceIDs         []string                `json:"evidence_ids"`
+	Reason              string                  `json:"reason"`
+	VerdictConfidence   *float64                `json:"verdict_confidence,omitempty"`
+	EntailedProbability *float64                `json:"entailed_probability,omitempty"`
 }
 
 // directDimension is a whole-answer dimension emitted by the support judge for
@@ -96,19 +103,32 @@ type supportPayload struct {
 	Dimensions []directDimension `json:"dimensions,omitempty"`
 }
 
-// Evaluate runs the two-stage judge over inst and returns a sealed report.
+// Evaluate runs the two-stage judge with normal cache behavior.
 func (j *ClaimJudge) Evaluate(ctx context.Context, inst eval.Instance) (assessment.Report, error) {
-	if err := eval.ValidateInstance(&inst); err != nil {
-		return assessment.Report{}, fmt.Errorf("claim judge: invalid instance: %w", err)
+	return j.EvaluateWithOptions(ctx, inst, EvaluationOptions{CacheMode: CacheUse})
+}
+
+// EvaluateWithOptions runs the two-stage judge with explicit run-scoped cache
+// behavior. It validates and binds the contract, protocol, prompt templates,
+// evidence policy, and instance before any generation is attempted.
+func (j *ClaimJudge) EvaluateWithOptions(ctx context.Context, inst eval.Instance, opts EvaluationOptions) (assessment.Report, error) {
+	if opts.CacheMode == "" {
+		opts.CacheMode = CacheUse
+	}
+	if opts.CacheMode != CacheUse && opts.CacheMode != CacheBypass {
+		return assessment.Report{}, fmt.Errorf("claim judge: cache mode %q is not recognized", opts.CacheMode)
+	}
+	if err := j.validateFor(&inst); err != nil {
+		return assessment.Report{}, err
 	}
 	allowed := assessment.EvidenceIDSet(inst.Evidence.Items)
 	started := j.now()
 
-	claims, err := j.extractClaims(ctx, inst)
+	claims, err := j.extractClaims(ctx, inst, opts)
 	if err != nil {
 		return assessment.Report{}, err
 	}
-	results, directs, err := j.judgeSupport(ctx, inst, claims)
+	results, directs, err := j.judgeSupport(ctx, inst, claims, opts)
 	if err != nil {
 		return assessment.Report{}, err
 	}
@@ -134,12 +154,97 @@ func (j *ClaimJudge) Evaluate(ctx context.Context, inst eval.Instance) (assessme
 	return report, nil
 }
 
-func (j *ClaimJudge) extractClaims(ctx context.Context, inst eval.Instance) ([]assessment.Claim, error) {
+func (j *ClaimJudge) validateFor(inst *eval.Instance) error {
+	if j.Generate == nil {
+		return fmt.Errorf("claim judge: generator is required")
+	}
+	if j.Prompts == nil {
+		return fmt.Errorf("claim judge: prompts are required")
+	}
+	if err := spec.ValidateContract(&j.Contract.Contract); err != nil {
+		return fmt.Errorf("claim judge: invalid contract: %w", err)
+	}
+	contractDigest, err := spec.SemanticDigest(&j.Contract.Contract)
+	if err != nil {
+		return fmt.Errorf("claim judge: contract digest: %w", err)
+	}
+	if contractDigest != j.Contract.Digest {
+		return fmt.Errorf("claim judge: contract digest %q does not match content (want %q)", j.Contract.Digest, contractDigest)
+	}
+	if err := protocol.Validate(&j.Protocol.Protocol); err != nil {
+		return fmt.Errorf("claim judge: invalid protocol: %w", err)
+	}
+	protocolDigest, err := protocol.SemanticDigest(&j.Protocol.Protocol)
+	if err != nil {
+		return fmt.Errorf("claim judge: protocol digest: %w", err)
+	}
+	if protocolDigest != j.Protocol.Digest {
+		return fmt.Errorf("claim judge: protocol digest %q does not match content (want %q)", j.Protocol.Digest, protocolDigest)
+	}
+	if j.Protocol.Protocol.MeasurementDigest != j.Contract.Digest {
+		return fmt.Errorf("claim judge: protocol measurement digest %q does not match contract %q", j.Protocol.Protocol.MeasurementDigest, j.Contract.Digest)
+	}
+	for _, step := range []string{"extract", "support"} {
+		got, err := j.Prompts.TemplateDigest(step)
+		if err != nil {
+			return fmt.Errorf("claim judge: %s template digest: %w", step, err)
+		}
+		want, ok := j.Protocol.Protocol.PromptDigests[step]
+		if !ok {
+			return fmt.Errorf("claim judge: protocol has no prompt digest for step %q", step)
+		}
+		if got != want {
+			return fmt.Errorf("claim judge: %s template digest %q does not match protocol %q", step, got, want)
+		}
+	}
+	if err := eval.ValidateInstance(inst); err != nil {
+		return fmt.Errorf("claim judge: invalid instance: %w", err)
+	}
+	if err := j.validateEvidencePolicy(&inst.Evidence); err != nil {
+		return fmt.Errorf("claim judge: evidence policy: %w", err)
+	}
+	return nil
+}
+
+func (j *ClaimJudge) validateEvidencePolicy(set *eval.EvidenceSet) error {
+	policy := &j.Contract.Contract.EvidencePolicy
+	want, err := spec.EvidencePolicyDigest(policy)
+	if err != nil {
+		return fmt.Errorf("compute digest: %w", err)
+	}
+	if set.PolicyDigest != want {
+		return fmt.Errorf("policy digest %q does not match contract evidence policy %q", set.PolicyDigest, want)
+	}
+	allowed := make(map[string]struct{}, len(policy.AllowedKinds))
+	for _, kind := range policy.AllowedKinds {
+		allowed[kind] = struct{}{}
+	}
+	forbidden := make(map[string]struct{}, len(policy.ForbiddenKinds))
+	for _, kind := range policy.ForbiddenKinds {
+		forbidden[kind] = struct{}{}
+	}
+	for _, item := range set.Items {
+		if _, denied := forbidden[item.Kind]; denied {
+			return fmt.Errorf("evidence %q has forbidden kind %q", item.ID, item.Kind)
+		}
+		if len(allowed) > 0 {
+			if _, ok := allowed[item.Kind]; !ok {
+				return fmt.Errorf("evidence %q has kind %q not present in allowed_kinds", item.ID, item.Kind)
+			}
+		}
+		if policy.RequireProvenance && len(item.Provenance) == 0 {
+			return fmt.Errorf("evidence %q requires provenance", item.ID)
+		}
+	}
+	return nil
+}
+
+func (j *ClaimJudge) extractClaims(ctx context.Context, inst eval.Instance, opts EvaluationOptions) ([]assessment.Claim, error) {
 	prompt, err := j.Prompts.ExtractPrompt(inst)
 	if err != nil {
 		return nil, fmt.Errorf("extract prompt: %w", err)
 	}
-	payload, err := generateAndDecode[extractPayload](ctx, j, inst, "extract", prompt)
+	payload, err := generateAndDecode[extractPayload](ctx, j, inst, "extract", prompt, opts)
 	if err != nil {
 		return nil, fmt.Errorf("extract: %w", err)
 	}
@@ -161,12 +266,12 @@ func (j *ClaimJudge) extractClaims(ctx context.Context, inst eval.Instance) ([]a
 	return claims, nil
 }
 
-func (j *ClaimJudge) judgeSupport(ctx context.Context, inst eval.Instance, claims []assessment.Claim) ([]assessment.ClaimAssessment, []directDimension, error) {
+func (j *ClaimJudge) judgeSupport(ctx context.Context, inst eval.Instance, claims []assessment.Claim, opts EvaluationOptions) ([]assessment.ClaimAssessment, []directDimension, error) {
 	prompt, err := j.Prompts.SupportPrompt(inst, claims)
 	if err != nil {
 		return nil, nil, fmt.Errorf("support prompt: %w", err)
 	}
-	payload, err := generateAndDecode[supportPayload](ctx, j, inst, "support", prompt)
+	payload, err := generateAndDecode[supportPayload](ctx, j, inst, "support", prompt, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("support: %w", err)
 	}
@@ -179,19 +284,38 @@ func (j *ClaimJudge) judgeSupport(ctx context.Context, inst eval.Instance, claim
 			return nil, nil, fmt.Errorf("support: verdict %d references claim %d, want %d", i+1, v.Claim, i+1)
 		}
 		results[i] = assessment.ClaimAssessment{
-			ClaimID:     claims[i].ID,
-			Label:       v.Label,
-			EvidenceIDs: v.EvidenceIDs,
-			Reason:      v.Reason,
-			Confidence:  v.Confidence,
+			ClaimID:             claims[i].ID,
+			Label:               v.Label,
+			EvidenceIDs:         v.EvidenceIDs,
+			Reason:              v.Reason,
+			VerdictConfidence:   v.VerdictConfidence,
+			EntailedProbability: v.EntailedProbability,
 		}
 	}
 	return results, payload.Dimensions, nil
 }
 
 func (j *ClaimJudge) aggregate(claims []assessment.Claim, results []assessment.ClaimAssessment, directs []directDimension) ([]assessment.DimensionResult, error) {
+	constructs := make(map[spec.ConstructID]*spec.Construct, len(j.Contract.Contract.Constructs))
+	for i := range j.Contract.Contract.Constructs {
+		c := &j.Contract.Contract.Constructs[i]
+		constructs[c.ID] = c
+	}
 	directByConstruct := make(map[spec.ConstructID]directDimension, len(directs))
 	for _, d := range directs {
+		c, ok := constructs[d.ConstructID]
+		if !ok {
+			return nil, fmt.Errorf("aggregation: judge emitted unknown direct construct %q", d.ConstructID)
+		}
+		if j.Contract.Contract.Aggregations[d.ConstructID].Method != spec.MethodDirect {
+			return nil, fmt.Errorf("aggregation: judge emitted direct result for non-direct construct %q", d.ConstructID)
+		}
+		if _, duplicate := directByConstruct[d.ConstructID]; duplicate {
+			return nil, fmt.Errorf("aggregation: judge emitted duplicate direct construct %q", d.ConstructID)
+		}
+		if err := validateDirectDimension(c, j.Contract.Contract.Labels[c.ID], d); err != nil {
+			return nil, err
+		}
 		directByConstruct[d.ConstructID] = d
 	}
 	labelCount := make(map[string]int, len(results))
@@ -209,6 +333,36 @@ func (j *ClaimJudge) aggregate(claims []assessment.Claim, results []assessment.C
 		dims = append(dims, dim)
 	}
 	return dims, nil
+}
+
+func validateDirectDimension(c *spec.Construct, labels []string, d directDimension) error {
+	if d.Value == nil && strings.TrimSpace(d.Label) == "" {
+		return fmt.Errorf("aggregation: direct construct %q emitted neither value nor label", c.ID)
+	}
+	if c.Range != nil {
+		if d.Value == nil {
+			return fmt.Errorf("aggregation: direct construct %q requires a numeric value", c.ID)
+		}
+		if *d.Value < c.Range.Minimum || *d.Value > c.Range.Maximum {
+			return fmt.Errorf("aggregation: direct construct %q value %g is outside [%g,%g]", c.ID, *d.Value, c.Range.Minimum, c.Range.Maximum)
+		}
+	}
+	if strings.TrimSpace(d.Label) != "" && len(labels) == 0 {
+		return fmt.Errorf("aggregation: direct construct %q emitted label %q but the contract declares no labels", c.ID, d.Label)
+	}
+	if len(labels) > 0 {
+		if strings.TrimSpace(d.Label) == "" {
+			return fmt.Errorf("aggregation: direct construct %q requires a declared label", c.ID)
+		}
+		allowed := make(map[string]struct{}, len(labels))
+		for _, label := range labels {
+			allowed[label] = struct{}{}
+		}
+		if _, ok := allowed[d.Label]; !ok {
+			return fmt.Errorf("aggregation: direct construct %q label %q is not declared", c.ID, d.Label)
+		}
+	}
+	return nil
 }
 
 func aggregateConstruct(c *spec.Construct, agg spec.Aggregation, labelCount map[string]int, results []assessment.ClaimAssessment, directs map[spec.ConstructID]directDimension) (assessment.DimensionResult, error) {
@@ -292,7 +446,7 @@ func unionEvidenceForLabels(results []assessment.ClaimAssessment, list string) [
 // generateAndDecode generates (with cache) and strictly decodes one JSON
 // object, retrying once per repair attempt on a structural failure. Semantic
 // failures are not retried; they surface to the caller and fail closed at seal.
-func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Instance, step, prompt string) (T, error) {
+func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Instance, step, prompt string, opts EvaluationOptions) (T, error) {
 	var zero T
 	maxAttempts := j.Protocol.Protocol.Retry.MaximumAttempts
 	if maxAttempts < 1 {
@@ -301,7 +455,7 @@ func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Inst
 	current := prompt
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		raw, err := j.generate(ctx, inst, step, current)
+		raw, err := j.generate(ctx, inst, step, current, opts)
 		if err != nil {
 			return zero, fmt.Errorf("generate: %w", err)
 		}
@@ -323,17 +477,21 @@ func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Inst
 	return zero, lastErr
 }
 
-func (j *ClaimJudge) generate(ctx context.Context, inst eval.Instance, step, prompt string) (string, error) {
+func (j *ClaimJudge) generate(ctx context.Context, inst eval.Instance, step, prompt string, opts EvaluationOptions) (string, error) {
 	key := CacheKey{
 		ProtocolDigest: j.Protocol.Digest,
 		InstanceDigest: inst.Digest,
 		Step:           step,
-		PromptDigest:   promptDigest(prompt),
+		PromptDigest:   PromptDigest(prompt),
 	}
 	cache := j.cache()
-	var cached string
-	if hit, err := cache.Load(ctx, key, &cached); err == nil && hit {
-		return cached, nil
+	if opts.CacheMode != CacheBypass {
+		var cached string
+		if hit, err := cache.Load(ctx, key, &cached); err != nil {
+			return "", fmt.Errorf("cache load: %w", err)
+		} else if hit {
+			return cached, nil
+		}
 	}
 	res, err := j.Generate.Generate(ctx, GenerationRequest{
 		Prompt:     prompt,
@@ -343,8 +501,10 @@ func (j *ClaimJudge) generate(ctx context.Context, inst eval.Instance, step, pro
 	if err != nil {
 		return "", err
 	}
-	if err := cache.Store(ctx, key, res.Text); err != nil {
-		return "", fmt.Errorf("cache store: %w", err)
+	if opts.CacheMode != CacheBypass {
+		if err := cache.Store(ctx, key, res.Text); err != nil {
+			return "", fmt.Errorf("cache store: %w", err)
+		}
 	}
 	return res.Text, nil
 }

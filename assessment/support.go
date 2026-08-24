@@ -29,14 +29,16 @@ func ValidSupportLabel(label SupportLabel) bool {
 	return validSupportLabels[label]
 }
 
-// ClaimAssessment is the verdict for one claim: its support label, the
-// evidence cited, an optional confidence, and a required reason. Entailed and
-// contradicted verdicts must cite at least one evidence item; only
-// insufficient may cite none.
+// ClaimAssessment is the verdict for one claim. VerdictConfidence is the
+// judge's confidence in the emitted label. EntailedProbability is the explicit
+// probability of the binary event "the claim is entailed" and is the only
+// field binary Brier/ECE calibration consumes. Keeping these meanings separate
+// prevents confident negative verdicts from being calibrated backwards.
 type ClaimAssessment struct {
-	ClaimID     string       `json:"claim_id" yaml:"claim_id"`
-	Label       SupportLabel `json:"label" yaml:"label"`
-	EvidenceIDs []string     `json:"evidence_ids" yaml:"evidence_ids"`
-	Confidence  *float64     `json:"confidence,omitempty" yaml:"confidence,omitempty"`
-	Reason      string       `json:"reason" yaml:"reason"`
+	ClaimID             string       `json:"claim_id" yaml:"claim_id"`
+	Label               SupportLabel `json:"label" yaml:"label"`
+	EvidenceIDs         []string     `json:"evidence_ids" yaml:"evidence_ids"`
+	VerdictConfidence   *float64     `json:"verdict_confidence,omitempty" yaml:"verdict_confidence,omitempty"`
+	EntailedProbability *float64     `json:"entailed_probability,omitempty" yaml:"entailed_probability,omitempty"`
+	Reason              string       `json:"reason" yaml:"reason"`
 }

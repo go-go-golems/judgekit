@@ -37,9 +37,32 @@ type Generator interface {
 	Generate(ctx context.Context, req GenerationRequest) (GenerationResult, error)
 }
 
+// CacheMode controls whether one evaluation may reuse generated output.
+type CacheMode string
+
+const (
+	// CacheUse loads and stores normal cache entries.
+	CacheUse CacheMode = "use"
+	// CacheBypass neither loads nor stores cache entries. Reliability audits use
+	// this mode so they measure fresh model behavior rather than cache equality.
+	CacheBypass CacheMode = "bypass"
+)
+
+// EvaluationOptions controls run-scoped behavior without mutating a Judge.
+type EvaluationOptions struct {
+	CacheMode CacheMode
+}
+
 // Judge evaluates one instance and returns a sealed report.
 type Judge interface {
 	Evaluate(ctx context.Context, inst eval.Instance) (assessment.Report, error)
+}
+
+// ConfigurableJudge supports explicit run-scoped evaluation behavior. Audit
+// runners use it when they need guaranteed cache bypass.
+type ConfigurableJudge interface {
+	Judge
+	EvaluateWithOptions(ctx context.Context, inst eval.Instance, opts EvaluationOptions) (assessment.Report, error)
 }
 
 // Critique is diagnostic feedback on an instance/report pair, intended to
