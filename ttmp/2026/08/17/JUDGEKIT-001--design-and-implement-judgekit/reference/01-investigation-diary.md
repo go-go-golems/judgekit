@@ -733,6 +733,8 @@ I also restored CI signal, moved to the patched Go toolchain, and enabled the re
 - `GOWORK=off golangci-lint run` reported `0 issues.`
 - `GOWORK=off govulncheck ./...` reported `No vulnerabilities found` and `Your code is affected by 0 vulnerabilities.`
 - Adversarial tests now cover stale digests, contract/protocol mismatch, prompt-template mismatch, unrelated/forbidden evidence policy, missing provenance, invalid direct output, cache bypass, cross-protocol calibration, missing report output, three-member panel identity, and live suite contexts.
+- The branch was pushed to PR 2; all eleven review threads received implementation replies and were resolved.
+- Final GitHub CI passed all eight checks: test, lint, Dependency Review, Go Vulnerability Check, GoSec, TruffleHog, Analyze, and CodeQL.
 
 ### What didn't work
 - The first targeted build failed with `audit/reliability.go:45:45: undefined: eval` after the cache-bypass closure introduced `eval.Instance`. I added the missing `eval` import, formatted the file, and reran the targeted and full suites successfully.
@@ -754,7 +756,7 @@ I also restored CI signal, moved to the patched Go toolchain, and enabled the re
 - Review whether audit should reject non-configurable judges for repeat probes rather than falling back to ordinary `Evaluate`.
 
 ### What should be done in the future
-- Push the branch, re-run GitHub CI, respond to and resolve all eleven review threads with links to regression tests.
+- Merge PR 2 after final reviewer approval.
 - After merge, run the CoinVault pilot using the lightweight guarantee design.
 
 ### Code review instructions
