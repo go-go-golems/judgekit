@@ -428,6 +428,8 @@ type ContractDocument struct {
 
 The semantic digest is computed from canonical JSON after validation. The byte digest records exact source bytes. Both matter: semantic identity ignores harmless YAML ordering, while byte identity proves which reviewed file was used.
 
+Canonical normalization must preserve integer precision. Protocol seeds and future integral configuration fields can use the full `int64` range; decoding through a generic `float64` intermediary would collapse distinct values above 2^53. The canonical decoder therefore uses `json.Decoder.UseNumber`, and the encoder emits validated `json.Number` values directly.
+
 ### 4.3 Evaluation artifacts
 
 ```go
@@ -654,8 +656,16 @@ input + candidate
 ```
 
 ```go
+type ClaimExtractionInput struct {
+    ID        string
+    Input     eval.Artifact
+    Candidate eval.Artifact
+    Metadata  map[string]string
+}
+
 type ClaimProtocol interface {
-    ExtractPrompt(eval.Instance) (string, error)
+    TemplateDigest(step string) (string, error)
+    ExtractPrompt(ClaimExtractionInput) (string, error)
     SupportPrompt(eval.Instance, []assessment.Claim) (string, error)
 }
 
@@ -670,7 +680,9 @@ type ClaimJudge struct {
 var _ Judge = (*ClaimJudge)(nil)
 ```
 
-The extractor must not see evidence unless the measurement contract explicitly defines evidence-conditioned claim extraction. The support judge may only cite IDs in the provided evidence set.
+The extractor must not see evidence unless the measurement contract explicitly defines evidence-conditioned claim extraction. `ClaimJudge` constructs the restricted `ClaimExtractionInput`; application prompt renderers never receive the complete evidence-bearing instance for extraction. The support judge may only cite IDs in the provided evidence set.
+
+After every generation, judgekit compares `GenerationResult.Model` with the protocol's declared model identity before caching or sealing output. This binds provider, model, revision, and settings to the report's protocol attribution; it does not claim a cryptographic provider attestation.
 
 ### 5.3 Structured parsing
 

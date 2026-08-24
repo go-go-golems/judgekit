@@ -92,6 +92,48 @@ The lightweight version does not guarantee:
 - long-term binary compatibility;
 - automatic migration across schema versions.
 
+### 2.4 Second-review clarifications
+
+The second PR review adds four lightweight guarantees. These are not hardened custody mechanisms; they prevent ordinary research code from changing what was measured or how a run is attributed.
+
+#### Enforce evidence-hidden extraction through the type system
+
+Claim extraction receives a restricted value instead of a complete instance:
+
+```go
+type ClaimExtractionInput struct {
+    ID        string
+    Input     eval.Artifact
+    Candidate eval.Artifact
+    Metadata  map[string]string
+}
+```
+
+`Evidence`, `Reference`, and `RequiredFacts` are intentionally absent. This prevents generic serialization or debugging renderers from leaking expected support into claim discovery. The support stage continues to receive the complete instance.
+
+#### Bind observed model identity
+
+A protocol records the intended model. A generator result records the observed provider/model identity. Research attribution requires exact agreement on provider, model, revision, and settings before output is cached or sealed.
+
+```go
+func ValidateObservedModel(expected, observed protocol.ModelIdentity) error
+```
+
+This check does not prove which hidden weights a hosted provider used. It proves that judgekit did not knowingly accept a response labeled with another model identity.
+
+#### Verify durable snapshots when consumed
+
+Mutable input values can remain ordinary Go structs, but two outputs are durable research snapshots:
+
+- `assessment.Report`, which is reused by audit, calibration, and applications;
+- `calibration.GoldSet`, which identifies the labeled evaluation population.
+
+Their explicit validation paths recompute their content digests. This does not imply continuous recursive verification or immutable wrappers; it ensures that a persisted snapshot still matches the identity under which a consumer uses it.
+
+#### Preserve exact integer semantics
+
+Canonical identity must distinguish every valid protocol seed. JSON normalization therefore uses `json.Decoder.UseNumber` and encodes `json.Number` without conversion through `float64`. Scores remain floating-point values, but integral configuration fields retain full `int64` precision.
+
 ## 3. Guarantee levels
 
 Use three levels instead of treating all values as equally sensitive.

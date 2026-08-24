@@ -147,6 +147,76 @@ Reliability currently compares intersections. If one report drops a difficult di
 | 9 | Panel matrix keyed by instance | Matrix requires evaluator identity | Add named panel members |
 | 10 | Instance digest is not recomputed | Cache/report identity must reflect actual input | Compute current instance identity at execution |
 | 11 | Calibration can consume another protocol's reports | Calibration population must be homogeneous | Validate report protocol before consuming verdicts |
+| 12 | Extraction renderer receives the full evidence-bearing instance | Evidence-hidden extraction must be enforced by the API | Pass a restricted extraction input containing only input, candidate, ID, and safe metadata |
+| 13 | Missing `statements` is indistinguishable from an explicit empty list | Required structured fields must be presence-checked | Decode through a pointer or presence wrapper and repair/reject omission |
+| 14 | Generator output model can differ from protocol model | Observed execution identity must match declared protocol identity | Compare provider, model, revision, and settings before caching or sealing |
+| 15 | Canonical JSON rounds large integers through `float64` | Semantic identity must preserve valid `int64` fields | Decode normalization with `UseNumber` and encode `json.Number` exactly |
+| 16 | Reliability reports can be stamped with another protocol | Audit population must be homogeneous | Require base and variant report protocol digests to match the requested protocol |
+| 17 | Gold-set digest is only prefix-checked | Durable calibration snapshots must retain content identity | Recompute gold-set digest during validation/calibration |
+| 18 | Sealed report digest is only prefix-checked | Durable assessment snapshots must retain content identity | Recompute report digest during explicit validation |
+
+## 5.1 Second-review addendum
+
+The second review does not change the stabilization architecture. It sharpens the same boundary: be strict where an error changes measurement meaning, experimental attribution, cache identity, or durable snapshot identity. It does not require private immutable types, signatures, a compiled-instrument typestate, or recursive verification at every internal call.
+
+Three refinements deserve explicit design treatment.
+
+### Restricted extraction input
+
+The evidence-hidden claim extractor must not receive a full `eval.Instance`. Relying on every prompt renderer to ignore `Evidence`, `Reference`, and `RequiredFacts` is too weak because a generic serializer can expose them accidentally.
+
+```go
+type ClaimExtractionInput struct {
+    ID        string
+    Input     eval.Artifact
+    Candidate eval.Artifact
+    Metadata  map[string]string
+}
+
+type ClaimProtocol interface {
+    TemplateDigest(step string) (string, error)
+    ExtractPrompt(ClaimExtractionInput) (string, error)
+    SupportPrompt(eval.Instance, []assessment.Claim) (string, error)
+}
+```
+
+The conversion into `ClaimExtractionInput` belongs inside `ClaimJudge`, not in application code. Tests should use a renderer that serializes its complete input and assert that evidence text, references, and required facts are absent.
+
+### Required structured-output presence
+
+Strict JSON decoding rejects unknown fields but does not distinguish an omitted slice from an empty slice. Extraction must distinguish malformed `{}` from the valid statement `{"statements":[]}`.
+
+```go
+type extractPayload struct {
+    Statements *[]string `json:"statements"`
+}
+
+if payload.Statements == nil {
+    return structuralError("required field statements is missing")
+}
+```
+
+The omission should enter the existing bounded structural-repair path. An explicit empty list remains valid and may trigger the contract's declared empty-case policy.
+
+### Declared versus observed execution identity
+
+`GenerationResult.Model` is an observation about the provider/model that actually served the request. It must match `Protocol.Model` before generated text enters a cache or report.
+
+```text
+protocol model identity
+        == provider-returned model identity
+        or fail before caching/sealing
+```
+
+For this research-stage implementation, exact comparison and clear errors are sufficient. Provider-signed attestations, request manifests, and long-term custody remain hardened-version concerns.
+
+### Durable snapshots versus mutable inputs
+
+The lightweight model permits ordinary mutable in-memory values, but assessment reports and gold sets are durable snapshots used by later consumers. Their explicit `Validate...` functions must recompute and compare stored digests. This is boundary verification, not pervasive immutability.
+
+### Precision-preserving canonicalization
+
+Protocol seeds are `int64`, so canonical normalization cannot pass integers through `float64`. `json.Decoder.UseNumber` preserves integer lexemes; the canonical encoder must handle `json.Number` directly. Add a regression proving that seeds `9007199254740992` and `9007199254740993` produce different canonical bytes and protocol digests.
 
 ## 6. Implementation plan
 
@@ -414,14 +484,19 @@ docs: align guarantees with research-stage behavior
 
 PR 2 is ready when:
 
-- all eleven threads are resolved with tests;
+- all eighteen threads are resolved with tests;
 - all CI jobs are green or a repository-setting limitation is explicitly documented;
-- no report can silently be attributed to the wrong contract or protocol;
+- extraction cannot observe evidence, references, or required facts;
+- missing required structured-output fields fail or enter bounded repair;
+- no report can silently be attributed to the wrong contract, protocol, or observed model;
 - direct outputs and evidence obey the measurement contract;
 - calibration consumes an explicit target probability;
 - repeat reliability cannot use cached generations;
 - missing output lowers reliability;
 - suite dependents receive a live context;
+- canonical JSON preserves distinct valid `int64` values;
+- reliability reports bind to the reports' actual protocol;
+- gold sets and sealed assessment reports verify their durable snapshot digests;
 - documentation no longer promises stronger immutability than the implementation provides.
 
 ## 11. Review checklist for the intern

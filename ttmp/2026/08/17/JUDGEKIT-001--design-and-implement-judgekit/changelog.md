@@ -105,3 +105,15 @@ PR 2 stabilization complete: all 11 review threads resolved and all 8 GitHub che
 
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Final PR and CI completion evidence
 
+
+## 2026-08-24
+
+Added the PR 2 second-review addendum covering restricted extraction input, required field presence, observed model binding, exact integer canonicalization, reliability protocol binding, and durable snapshot verification.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/01-judgekit-architecture-and-implementation-guide.md — Corrected foundational extraction and canonical identity requirements
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/02-pr-2-code-review-stabilization-guide.md — Added findings 12-18 and expanded merge gate
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/03-lightweight-research-guarantees-after-merge.md — Clarified lightweight attribution and snapshot boundaries
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Recorded second-review design reasoning
+

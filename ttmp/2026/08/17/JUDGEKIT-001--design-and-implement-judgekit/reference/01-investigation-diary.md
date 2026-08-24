@@ -769,3 +769,63 @@ I also restored CI signal, moved to the patched Go toolchain, and enabled the re
 - Repository dependency graph was enabled through the GitHub repository API.
 - Prompt-template digests remain in `protocol.Protocol.PromptDigests`; rendered prompt SHA-256 values remain in cache keys.
 - Mutable input values retain stored digests for this PR, but validators now reject stale content.
+
+## Step 17: Add the second-review design addendum
+
+A second automated review added seven findings after the first stabilization pass. I evaluated them against the lightweight guarantee model and found that they refine, rather than replace, the design: enforce evidence-hidden extraction through a restricted input type, require structured-output field presence, bind observed model identity, preserve full integer semantics in canonical JSON, bind reliability reports to their actual protocol, and verify durable gold/report snapshot digests.
+
+I added these findings to the PR stabilization matrix and merge gate, expanded the lightweight guide's attribution rules, and corrected the original architecture guide so it no longer treats precision loss above 2^53 as acceptable.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Add the addendum
+
+[REMINDER] Output a <summary>...</summary> block at the VERY END of your response. This is mandatory."
+
+**Assistant interpretation:** Update the JUDGEKIT-001 design package with the second-review conclusions before implementing the seven new PR findings.
+
+**Inferred user intent:** Preserve the reasoning behind the next repair pass and ensure the implementation remains aligned with the lightweight research-validity boundary rather than drifting toward unplanned hardening.
+
+### What I did
+- Extended the stabilization issue matrix from eleven to eighteen findings.
+- Added API sketches for `ClaimExtractionInput`, required-field presence, and observed-model validation.
+- Added canonical-number, audit protocol-binding, and durable snapshot verification requirements to the merge gate.
+- Added a lightweight-guarantees subsection distinguishing restricted extraction, observed model identity, durable report/gold snapshots, and exact `int64` canonical semantics.
+- Updated the original architecture's `ClaimProtocol` API and canonical JSON requirements.
+- Left the fully hardened guide unchanged because none of the new findings requires cross-trust custody, signatures, or immutable typestate.
+
+### Why
+- The new comments are legitimate research correctness and attribution issues.
+- Recording the design boundary first prevents digest verification on durable outputs from being misread as a decision to verify every mutable value continuously.
+
+### What worked
+- The existing three-level model—structural validity, research attribution, hardened integrity—classified all seven findings without contradiction.
+- The addendum fits into the existing documents without introducing a new package or architectural layer.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- Evidence-hidden extraction requires information hiding in the API, not only a comment on renderer behavior.
+- A canonicalizer used for protocol identity must preserve the full domain of every identity-bearing field, including `int64` seeds.
+- Gold sets and assessment reports are durable snapshots even in a lightweight system; validating their stored digest at consumption is proportionate.
+
+### What was tricky to build
+- The observed-model comment contains both a lightweight requirement and a possible hardened extension. Exact identity comparison belongs now; provider-signed attestations and complete run manifests remain deferred.
+- Extraction should exclude not only `Evidence`, but also `Reference` and `RequiredFacts`, because either can leak expected answer structure.
+
+### What warrants a second pair of eyes
+- Confirm whether extraction metadata should be copied wholesale or filtered through an allowlist before `ClaimExtractionInput` is finalized.
+- Confirm exact comparison semantics for optional model revision and settings when providers omit fields.
+
+### What should be done in the future
+- Implement the seven second-review fixes with regression tests and resolve the new PR threads.
+
+### Code review instructions
+- Read the new Section 5.1 of the stabilization guide first.
+- Compare the lightweight guide's Section 2.4 with the original architecture's updated Section 5.2.
+- Verify the hardened guide remains explicitly deferred.
+
+### Technical details
+- Updated documents: design docs 01, 02, and 03.
+- Second-review issue range: 12–18.
