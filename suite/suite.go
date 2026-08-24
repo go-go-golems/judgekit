@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/go-go-golems/judgekit/assessment"
 	"github.com/go-go-golems/judgekit/eval"
@@ -151,7 +150,6 @@ func (s Suite) Run(ctx context.Context, inst eval.Instance) (Results, error) {
 	}
 
 	results := Results{Reports: make(map[string]assessment.Report, len(s.Evaluators))}
-	var mu sync.Mutex
 
 	// remaining tracks, per evaluator, the dependencies not yet satisfied.
 	remaining := make(map[string]map[string]struct{}, len(s.Evaluators))
@@ -167,9 +165,9 @@ func (s Suite) Run(ctx context.Context, inst eval.Instance) (Results, error) {
 		pending[e.Name()] = e
 	}
 
-	g, gctx := errgroup.WithContext(ctx)
 	for len(pending) > 0 {
-		// Find evaluators whose dependencies are all satisfied.
+		// Find one dependency wave. Scheduling state stays single-threaded;
+		// workers only write to distinct result slots.
 		ready := make([]Evaluator, 0)
 		for name, e := range pending {
 			if len(remaining[name]) == 0 {
@@ -177,32 +175,35 @@ func (s Suite) Run(ctx context.Context, inst eval.Instance) (Results, error) {
 			}
 		}
 		if len(ready) == 0 {
-			// checkAcyclic should have prevented this, but guard anyway.
 			return Results{}, fmt.Errorf("suite %q: no ready evaluators but %d pending (deadlock)", s.Name, len(pending))
 		}
-		for _, e := range ready {
-			delete(pending, e.Name())
-			// Snapshot the results available to this evaluator at dispatch time.
-			snapshot := snapshotResults(results)
+		sort.Slice(ready, func(i, j int) bool { return ready[i].Name() < ready[j].Name() })
+		snapshot := snapshotResults(results)
+		waveReports := make([]assessment.Report, len(ready))
+		g, waveCtx := errgroup.WithContext(ctx)
+		for i, evaluator := range ready {
+			i, evaluator := i, evaluator
 			g.Go(func() error {
-				report, err := e.Evaluate(gctx, inst, snapshot)
+				report, err := evaluator.Evaluate(waveCtx, inst, snapshot)
 				if err != nil {
-					return fmt.Errorf("suite: evaluator %q: %w", e.Name(), err)
+					return fmt.Errorf("suite: evaluator %q: %w", evaluator.Name(), err)
 				}
-				mu.Lock()
-				results.Reports[e.Name()] = report
-				// Satisfy this evaluator's dependents.
-				for dep := range remaining {
-					delete(remaining[dep], e.Name())
-				}
-				mu.Unlock()
+				waveReports[i] = report
 				return nil
 			})
 		}
-		// Wait for this wave to finish before dispatching the next, so a
-		// dependent evaluator sees its dependencies' reports.
 		if err := g.Wait(); err != nil {
 			return Results{}, err
+		}
+		// errgroup cancels waveCtx after Wait, so the next iteration creates a
+		// fresh group/context. Publish and satisfy the completed wave now.
+		for i, evaluator := range ready {
+			name := evaluator.Name()
+			results.Reports[name] = waveReports[i]
+			delete(pending, name)
+			for dependent := range remaining {
+				delete(remaining[dependent], name)
+			}
 		}
 	}
 	return results, nil

@@ -3,8 +3,6 @@ package suite
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -137,6 +135,37 @@ func TestRunDependentEvaluatorSeesDependency(t *testing.T) {
 	}
 }
 
+func TestRunDependentEvaluatorReceivesLiveContext(t *testing.T) {
+	a := &JudgeEvaluator{EvaluatorName: "a", Judge: &stubJudge{name: "a", value: 0.5}}
+	b := &contextCheckingEvaluator{name: "b", deps: []string{"a"}}
+	s, err := NewSuite("live-context", []Evaluator{a, b})
+	if err != nil {
+		t.Fatalf("NewSuite: %v", err)
+	}
+	if _, err := s.Run(context.Background(), makeInstance(t, "inst")); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !b.ran {
+		t.Errorf("dependent evaluator did not run")
+	}
+}
+
+type contextCheckingEvaluator struct {
+	name string
+	deps []string
+	ran  bool
+}
+
+func (e *contextCheckingEvaluator) Name() string        { return e.name }
+func (e *contextCheckingEvaluator) DependsOn() []string { return e.deps }
+func (e *contextCheckingEvaluator) Evaluate(ctx context.Context, _ eval.Instance, _ Results) (assessment.Report, error) {
+	if err := ctx.Err(); err != nil {
+		return assessment.Report{}, err
+	}
+	e.ran = true
+	return reportFor(e.name, 1), nil
+}
+
 func TestRunPreservesEachReportIdentity(t *testing.T) {
 	a := &JudgeEvaluator{EvaluatorName: "a", Judge: &stubJudge{name: "a", value: 0.5}}
 	b := &JudgeEvaluator{EvaluatorName: "b", Judge: &stubJudge{name: "b", value: 0.9}}
@@ -218,7 +247,3 @@ func (s *sleepEvaluator) Evaluate(ctx context.Context, _ eval.Instance, _ Result
 	}
 	return reportFor(s.name, 1.0), nil
 }
-
-// silence unused import warnings for fmt in case future assertions use it.
-var _ = fmt.Sprintf
-var _ sync.Mutex
