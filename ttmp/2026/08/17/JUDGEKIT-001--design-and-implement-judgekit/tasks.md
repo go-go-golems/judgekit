@@ -14,3 +14,4 @@
 - [x] Design lightweight post-merge research guarantees <!-- t:unte -->
 - [x] Document the optional fully hardened architecture <!-- t:2c7p -->
 - [x] Validate and upload the three-guide bundle to reMarkable <!-- t:kcgq -->
+- [x] Implement and validate all PR 2 review fixes <!-- t:g68l -->

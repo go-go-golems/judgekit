@@ -679,3 +679,88 @@ Create  a analysis / design / implementation guide that is for a new intern, exp
 - Lightweight guide: 576 lines, 2,367 words.
 - Hardened guide: 684 lines, 2,580 words.
 - Verified reMarkable upload: `/ai/2026/08/24/JUDGEKIT-001/JUDGEKIT-001 Review Guarantees and Hardening Guides.pdf`.
+
+## Step 16: Stabilize PR 2 against the review findings
+
+I implemented the PR 2 stabilization guide as focused commits rather than introducing the fully hardened architecture. The work now binds contracts, protocols, prompt-template identities, evidence policy, and direct dimensions before generation; separates verdict confidence from entailment probability; forces fresh configurable-judge calls during audits; treats missing output as disagreement; gives panel members stable identities; and scopes suite contexts to individual dependency waves.
+
+I also restored CI signal, moved to the patched Go toolchain, and enabled the repository dependency graph so the dependency-review job can run. The resulting branch passes fresh unit tests, the race detector, vet, lint, and govulncheck.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Implement the fixes for the PR.
+
+[REMINDER] Output a <summary>...</summary> block at the VERY END of your response. This is mandatory."
+
+**Assistant interpretation:** Implement all eleven review fixes and associated CI repairs on the existing PR branch, preserve the lightweight research-stage architecture, add regression tests, commit in focused units, and update the ticket diary.
+
+**Inferred user intent:** Make PR 2 safe to merge without expanding it into a production-grade integrity system, while ensuring the current research measurements cannot be silently misattributed or overstate reliability/calibration.
+
+**Commit (code):** 4126d73 — "fix(judging): enforce measurement and execution contracts"
+
+**Commit (code):** 52869e3 — "fix(audit): preserve probability, freshness, and judge identity"
+
+**Commit (code):** 7a69477 — "fix(suite): scope contexts to dependency waves"
+
+**Commit (code):** 3e7e258 — "ci: restore tests and use patched Go toolchain"
+
+**Commit (code):** 2739bac — "docs: describe stabilized protocol and calibration semantics"
+
+### What I did
+- Recomputed and compared evidence-set and instance digests during validation; added mutation regression tests.
+- Added `spec.EvidencePolicyDigest` and enforced policy digest, allowed/forbidden kinds, and required provenance before model calls.
+- Bound contract and protocol semantic digests and required `Protocol.MeasurementDigest == Contract.Digest`.
+- Extended `ClaimProtocol` with stable template identity; protocol pins template digests while cache keys hash rendered prompt content.
+- Added `CacheMode`, `EvaluationOptions`, and `ConfigurableJudge`; audit runs configurable judges with `CacheBypass`.
+- Split claim verdict confidence from explicit `EntailedProbability`; calibration uses only the latter and rejects reports from another protocol.
+- Validated direct dimensions against known constructs, aggregation methods, numeric ranges, and declared labels; rejected unknown and duplicate direct results.
+- Changed disagreement/reliability calculations to compare unions of claim and construct IDs, counting missing output as disagreement.
+- Replaced anonymous panel judges with `PanelMember{ID, Judge}`, keyed reports/matrices by member ID, and ran members concurrently.
+- Recreated an errgroup/context per suite dependency wave and kept scheduler mutation outside worker goroutines.
+- Removed the stale logcopter CI step, changed the toolchain to Go 1.26.6, and enabled GitHub dependency-graph support.
+- Updated README, glossary, developer reference, tutorial, and runnable example for the new semantics.
+
+### Why
+- The fixes protect research meaning and attribution without adding immutable typestate, signatures, or custody infrastructure.
+- Every reviewed defect could otherwise produce a plausible but incorrectly attributed, calibrated, or reliability-scored result.
+
+### What worked
+- `GOWORK=off go test -count=1 ./...` passed all packages.
+- `GOWORK=off go test -race -count=1 ./...` passed with no races.
+- `GOWORK=off go vet ./...` passed.
+- `GOWORK=off golangci-lint run` reported `0 issues.`
+- `GOWORK=off govulncheck ./...` reported `No vulnerabilities found` and `Your code is affected by 0 vulnerabilities.`
+- Adversarial tests now cover stale digests, contract/protocol mismatch, prompt-template mismatch, unrelated/forbidden evidence policy, missing provenance, invalid direct output, cache bypass, cross-protocol calibration, missing report output, three-member panel identity, and live suite contexts.
+
+### What didn't work
+- The first targeted build failed with `audit/reliability.go:45:45: undefined: eval` after the cache-bypass closure introduced `eval.Instance`. I added the missing `eval` import, formatted the file, and reran the targeted and full suites successfully.
+
+### What I learned
+- A stable prompt-template identity and a rendered-prompt content digest solve different problems; protocol binding and cache identity need both.
+- Union-based comparison is necessary in both audit and panel code because output disappearance is itself instability.
+- A fresh errgroup per dependency wave is simpler than sharing scheduler mutation between workers and the dispatch loop.
+
+### What was tricky to build
+- The confidence migration had to preserve descriptive confidence while preventing calibration from interpreting a confident negative verdict as a high probability of entailment. The explicit `EntailedProbability` field makes the target event unambiguous.
+- Evidence policy enforcement crosses `spec` and `eval` without reversing package dependencies. `spec` computes the policy digest; `judging` applies the policy to generic evidence items.
+- Panel concurrency cannot write directly to a shared Go map, even with distinct keys. Workers write to separate slice slots, and the map is assembled after `errgroup.Wait`.
+
+### What warrants a second pair of eyes
+- Review whether every application prompt implementation can provide a stable `TemplateDigest` without accidentally hashing only a human version label.
+- Review the v0 API break from `Confidence` to `VerdictConfidence` plus `EntailedProbability` before adding external consumers.
+- Review whether audit should reject non-configurable judges for repeat probes rather than falling back to ordinary `Evaluate`.
+
+### What should be done in the future
+- Push the branch, re-run GitHub CI, respond to and resolve all eleven review threads with links to regression tests.
+- After merge, run the CoinVault pilot using the lightweight guarantee design.
+
+### Code review instructions
+- Start with `judging/claimjudge.go` (`validateFor`, `validateEvidencePolicy`, `validateDirectDimension`, `EvaluateWithOptions`).
+- Then inspect `calibration/report.go`, `audit/{reliability,disagreement,panel}.go`, and `suite/suite.go`.
+- Review the adversarial tests next to each implementation.
+- Validate with `GOWORK=off go test -race -count=1 ./... && GOWORK=off golangci-lint run && GOWORK=off govulncheck ./...`.
+
+### Technical details
+- Repository dependency graph was enabled through the GitHub repository API.
+- Prompt-template digests remain in `protocol.Protocol.PromptDigests`; rendered prompt SHA-256 values remain in cache keys.
+- Mutable input values retain stored digests for this PR, but validators now reject stale content.

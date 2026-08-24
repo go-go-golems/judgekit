@@ -71,3 +71,17 @@ Validated and uploaded the three-guide JUDGEKIT-001 bundle to reMarkable at /ai/
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/04-fully-hardened-judgekit-architecture.md — Uploaded deferred hardening reference
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Recorded validation and delivery evidence
 
+
+## 2026-08-24
+
+Implemented PR 2 stabilization across judging, calibration, audit, suite, CI, tests, and docs (commits 4126d73, 52869e3, 7a69477, 3e7e258, 2739bac).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/audit/panel.go — Stable concurrent panel member identity
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/audit/reliability.go — Fresh calls and union-based reliability
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/calibration/report.go — Explicit target probability and protocol-homogeneous calibration
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/judging/claimjudge.go — Contract, protocol, prompt, evidence, direct-result, and cache-mode enforcement
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/suite/suite.go — Fresh context per dependency wave
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Implementation evidence and validation results
+
