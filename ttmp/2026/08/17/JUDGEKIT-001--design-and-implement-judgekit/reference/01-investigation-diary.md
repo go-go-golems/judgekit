@@ -16,12 +16,19 @@ RelatedFiles:
       Note: Repository-local docmgr root configuration
     - Path: repo://ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/01-judgekit-architecture-and-implementation-guide.md
       Note: Primary judgekit design deliverable
+    - Path: repo://ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/02-pr-2-code-review-stabilization-guide.md
+      Note: Immediate PR stabilization deliverable
+    - Path: repo://ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/03-lightweight-research-guarantees-after-merge.md
+      Note: Recommended post-merge lightweight architecture
+    - Path: repo://ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/04-fully-hardened-judgekit-architecture.md
+      Note: Deferred hardened reference architecture
 ExternalSources: []
 Summary: Chronological record of initializing the judgekit ticket and designing the library architecture.
 LastUpdated: 2026-08-17T18:58:00-04:00
 WhatFor: Preserve design evidence, repository findings, failures, decisions, validation, and delivery details for judgekit implementation.
 WhenToUse: Before resuming JUDGEKIT-001 or implementing any phase of the judgekit design.
 ---
+
 
 
 # Diary
@@ -599,3 +606,76 @@ The user asked to implement the three remaining core packages. I started with `c
 - Update GLOSSARY.md and the developer reference to mark audit/calibration/suite as implemented (currently documented as "future").
 - Add the `audit` and `calibration` packages to the README package map and the user-guide invariants.
 - Add fuzz tests for the new metric functions (Brier/ECE, extraction recall, disagreement comparison) per the design's Phase 11.2.
+
+## Step 15: Separate PR stabilization, lightweight guarantees, and full hardening
+
+After reviewing all eleven PR 2 threads and the failing CI jobs, I separated three questions that had become entangled: what must be corrected before the first merge, what guarantee level is proportionate for trusted internal research, and what a genuinely hardened cross-trust system would require. I wrote one intern-oriented design guide for each horizon rather than forcing all concerns into one implementation plan.
+
+The three documents deliberately form a decision ladder. The stabilization guide is immediately actionable and maps every review thread to code and regression tests. The lightweight guide is the recommended post-merge architecture for CoinVault research. The hardened guide is a reference design whose implementation requires a new threat model and explicit consumer.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Ok, create 3 design docs:
+
+- one to address code review issues
+- one to simplify / implement the lighter guarantees (once the PR is merged)
+- one to document the \"fully hardened version\" (which we probably won't implemented).
+
+Create  a analysis / design / implementation guide that is for a new intern, explaining all the parts of the system needed to understand what it is, with prose paragraphs and bullet point sand pseudocode and diagrams and api references and file references. It should be very clear and technical. Store in the ticket and the nupload to remarkable.
+
+[REMINDER] Output a <summary>...</summary> block at the VERY END of your response. This is mandatory."
+
+**Assistant interpretation:** Add three detailed, complementary JUDGEKIT-001 design documents covering immediate review fixes, pragmatic post-merge research guarantees, and a deliberately deferred production-hardening architecture; maintain ticket bookkeeping and publish the bundle to reMarkable.
+
+**Inferred user intent:** Give a new engineer enough conceptual and file-level context to fix the current PR without overengineering, while preserving both the recommended next architecture and a clear record of what full hardening would entail if the trust model changes.
+
+### What I did
+- Added `02-pr-2-code-review-stabilization-guide.md`, mapping all eleven review findings and three CI failures to focused implementation phases, tests, commits, and a merge gate.
+- Added `03-lightweight-research-guarantees-after-merge.md`, defining structural validity, research attribution, on-demand identity, prompt versions, cache modes, explicit calibration probabilities, and the CoinVault pilot.
+- Added `04-fully-hardened-judgekit-architecture.md`, documenting verified values, domain-separated digests, compiled instruments, Merkle-linked manifests, evidence custody, signatures, independent verification, and a staged migration path.
+- Included ASCII architecture diagrams, Go API sketches, pseudocode, decision records, test plans, intern checklists, and concrete source references in all three documents.
+- Validated frontmatter and checked Markdown code-fence balance before rendering.
+
+### Why
+- The PR review identified real semantic bugs, but implementing every possible integrity mechanism now would be disproportionate for trusted research.
+- Separate documents prevent the immediate repair plan from being polluted by speculative production requirements.
+- The hardened reference prevents future engineers from implementing isolated cryptographic features without the surrounding custody and verification architecture.
+
+### What worked
+- Docmgr created all three design documents under the existing repository-local ticket.
+- Frontmatter validation passed for every document.
+- The guides total 1,700 lines and more than 7,200 words while remaining divided by implementation horizon.
+- The reMarkable dry-run succeeded, then remarquee reported: `OK: uploaded JUDGEKIT-001 Review Guarantees and Hardening Guides.pdf -> /ai/2026/08/24/JUDGEKIT-001`.
+
+### What didn't work
+- N/A. Document creation and validation succeeded on the first pass.
+
+### What I learned
+- The useful guarantee boundary is not “strict versus relaxed”; it is structural validity, research attribution, and adversarial integrity as three distinct levels.
+- Stored digests are most useful on durable snapshots. Mutable research inputs are easier to reason about when identity is computed at execution boundaries.
+- A hardened design must include custody, canonicalization versions, key management, privacy, and independent verification; signatures alone would only create false assurance.
+
+### What was tricky to build
+- The prompt-digest issue requires separating stable prompt-template/version identity from the digest of rendered instance-specific content. Comparing every rendered prompt to one static digest is not coherent.
+- The hardened guide had to explain that integrity evidence does not establish evaluator validity. It explicitly keeps calibration, consequential validity, and optimization safety separate from signatures and manifests.
+
+### What warrants a second pair of eyes
+- Review whether PR 2 should rename confidence fields immediately or temporarily disable Brier/ECE until explicit target probabilities exist.
+- Review whether mutable input digest fields should be removed in one post-merge v0 API cleanup or merely ignored in favor of on-demand computation.
+- Review whether the Glazed help CLI should move to a nested module before a tagged release.
+
+### What should be done in the future
+- Implement the stabilization guide before merging PR 2.
+- Run the CoinVault pilot against the lightweight guarantee model after merge.
+- Leave the hardened architecture unimplemented unless an explicit cross-trust or regulated consumer appears.
+
+### Code review instructions
+- Read the documents in numerical order: immediate stabilization, recommended lightweight design, optional hardening.
+- For PR fixes, begin with `judging/claimjudge.go`, `calibration/report.go`, `audit/reliability.go`, `audit/disagreement.go`, `audit/panel.go`, and `suite/suite.go`.
+- Validate documentation with `docmgr doctor --ticket JUDGEKIT-001 --stale-after 30`.
+
+### Technical details
+- Stabilization guide: 440 lines, 2,274 words.
+- Lightweight guide: 576 lines, 2,367 words.
+- Hardened guide: 684 lines, 2,580 words.
+- Verified reMarkable upload: `/ai/2026/08/24/JUDGEKIT-001/JUDGEKIT-001 Review Guarantees and Hardening Guides.pdf`.

@@ -47,3 +47,27 @@ Implemented the remaining core packages: calibration (gold records, extraction r
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/calibration/report.go — Calibrate entry point
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/suite/suite.go — Acyclic evaluator suites
 
+
+## 2026-08-24
+
+Added three intern-ready guides separating PR 2 stabilization, post-merge lightweight research guarantees, and the optional fully hardened architecture.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/02-pr-2-code-review-stabilization-guide.md — Maps review findings to fixes and tests
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/03-lightweight-research-guarantees-after-merge.md — Defines recommended research-stage guarantees
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/04-fully-hardened-judgekit-architecture.md — Preserves a deferred cross-trust hardening design
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Records analysis, decisions, and delivery work
+
+
+## 2026-08-24
+
+Validated and uploaded the three-guide JUDGEKIT-001 bundle to reMarkable at /ai/2026/08/24/JUDGEKIT-001.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/02-pr-2-code-review-stabilization-guide.md — Uploaded immediate stabilization guide
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/03-lightweight-research-guarantees-after-merge.md — Uploaded recommended post-merge guide
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/design-doc/04-fully-hardened-judgekit-architecture.md — Uploaded deferred hardening reference
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Recorded validation and delivery evidence
+

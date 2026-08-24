@@ -10,3 +10,7 @@
 - [x] Implement calibration (gold, recall, confusion, Brier, ECE) <!-- t:09vr -->
 - [x] Implement audit (probes, reliability, panels) <!-- t:n3fp -->
 - [x] Implement suite (acyclic graph, concurrent evaluators) <!-- t:cntt -->
+- [x] Document PR 2 code review stabilization work <!-- t:5r7f -->
+- [x] Design lightweight post-merge research guarantees <!-- t:unte -->
+- [x] Document the optional fully hardened architecture <!-- t:2c7p -->
+- [x] Validate and upload the three-guide bundle to reMarkable <!-- t:kcgq -->
