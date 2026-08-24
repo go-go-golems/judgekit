@@ -704,6 +704,8 @@ I also restored CI signal, moved to the patched Go toolchain, and enabled the re
 
 **Commit (code):** 3e7e258 — "ci: restore tests and use patched Go toolchain"
 
+**Commit (code):** 6f8acb9 — "fix(deps): restore patched jsonparser version"
+
 **Commit (code):** 2739bac — "docs: describe stabilized protocol and calibration semantics"
 
 ### What I did
@@ -734,6 +736,7 @@ I also restored CI signal, moved to the patched Go toolchain, and enabled the re
 
 ### What didn't work
 - The first targeted build failed with `audit/reliability.go:45:45: undefined: eval` after the cache-bypass closure introduced `eval.Instance`. I added the missing `eval` import, formatted the file, and reran the targeted and full suites successfully.
+- After enabling GitHub dependency-graph support, Dependency Review correctly failed on `github.com/buger/jsonparser@1.1.1` (`GHSA-6g7g-w4f8-9c9x`, high severity). Main previously carried 1.2.0, so I restored 1.2.0 explicitly, reran tests and govulncheck, committed the dependency fix, and pushed it for a clean rerun.
 
 ### What I learned
 - A stable prompt-template identity and a rendered-prompt content digest solve different problems; protocol binding and cache identity need both.

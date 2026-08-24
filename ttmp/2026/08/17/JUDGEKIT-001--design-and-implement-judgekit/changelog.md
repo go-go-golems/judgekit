@@ -85,3 +85,14 @@ Implemented PR 2 stabilization across judging, calibration, audit, suite, CI, te
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/suite/suite.go — Fresh context per dependency wave
 - /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Implementation evidence and validation results
 
+
+## 2026-08-24
+
+Enabled dependency review and restored github.com/buger/jsonparser v1.2.0 after CI exposed the vulnerable 1.1.1 transitive downgrade (commit 6f8acb9).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/go.mod — Pins the patched transitive dependency
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/go.sum — Records patched module checksums
+- /home/manuel/workspaces/2026-08-12/deploy-dev-indexer/judgekit/ttmp/2026/08/17/JUDGEKIT-001--design-and-implement-judgekit/reference/01-investigation-diary.md — Records CI failure and correction
+
