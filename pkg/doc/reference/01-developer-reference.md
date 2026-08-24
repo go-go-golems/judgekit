@@ -115,7 +115,7 @@ type Protocol struct {
     Name              string  // bounded identifier
     MeasurementDigest string  // pins the contract
     Model             ModelIdentity
-    PromptDigests     map[string]string  // step -> "sha256:..."
+    PromptDigests     map[string]string  // step -> template/renderer digest
     Decoding          DecodingPolicy
     EvidenceOrder     string  // as_given | sorted | shuffled
     ParserVersion     string
@@ -144,8 +144,9 @@ type ClaimAssessment struct {
     ClaimID     string
     Label       SupportLabel
     EvidenceIDs []string
-    Confidence  *float64
-    Reason      string
+    VerdictConfidence   *float64  // confidence in the emitted label
+    EntailedProbability *float64  // P(entailed), used by binary calibration
+    Reason              string
 }
 
 type DimensionResult struct {
@@ -196,6 +197,7 @@ type Judge interface {
 }
 
 type ClaimProtocol interface {
+    TemplateDigest(step string) (string, error)
     ExtractPrompt(inst eval.Instance) (string, error)
     SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error)
 }
@@ -212,6 +214,7 @@ type ClaimJudge struct {
 ```
 
 Entry points: `(*ClaimJudge).Evaluate(ctx, inst)`,
+`(*ClaimJudge).EvaluateWithOptions(ctx, inst, opts)`,
 `judging.NewMemoryCache()`, `judging.FakeGenerator`,
 `judging.DecodeJSONObjectStrict[T](raw)`, `judging.IsStructural(err)`.
 
@@ -220,7 +223,8 @@ Invariants:
   the instance.
 - Only structural failures are repaired (up to `Retry.MaximumAttempts`); semantic
   failures fail closed at seal.
-- Cache keys include the prompt digest, so a prompt change is a new population.
+- Protocol prompt digests bind stable template identities; cache keys hash the fully rendered prompt.
+- Reliability audits call configurable judges with `CacheBypass`.
 
 ## Implementing a generator adapter
 
@@ -262,9 +266,14 @@ type ReliabilityReport struct {
     Digest              string
 }
 
+type PanelMember struct {
+    ID    string
+    Judge judging.Judge
+}
+
 type Panel struct {
-    Judges []judging.Judge
-    Policy AggregationPolicy
+    Members []PanelMember
+    Policy  AggregationPolicy
 }
 ```
 
@@ -290,7 +299,7 @@ type Report struct {
     Sensitivity      float64
     Specificity       float64
     FalseSupportRate float64
-    BrierScore       *float64  // nil when no confidence emitted
+    BrierScore       *float64  // nil when no entailed probability emitted
     ECE              *float64
     Digest           string
 }
@@ -302,7 +311,7 @@ Entry points: `calibration.Calibrate`, `calibration.ConfusionFromClaims`,
 
 Invariants: gold records retain reviewer identity; extraction recall is over
 all gold claims while confusion is over matched claims; Brier/ECE apply only
-when confidence is present. `calibration` consumes reports and gold records; it
+when an explicit entailed probability is present. Reports from another protocol are rejected. `calibration` consumes reports and gold records; it
 does not run judges.
 
 ## suite — combining evaluators

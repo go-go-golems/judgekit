@@ -152,8 +152,8 @@ Calibration links judgekit reports to human or objective labels. The
 `calibration` package computes extraction recall (a judge can look accurate by
 extracting fewer claims), confusion matrices, sensitivity, specificity, the
 false-support rate, the Brier score, and expected calibration error. Brier
-and ECE apply only when the protocol emits confidence probabilities; a 1-5
-ordinal score is not a probability.
+and ECE apply only when the protocol emits an explicit entailed probability;
+confidence in the selected verdict and a 1-5 ordinal score are not target-class probabilities.
 
 ```go
 report, err := calibration.Calibrate(calibration.CalibrateInput{

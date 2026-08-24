@@ -141,8 +141,8 @@ rubrics separate dimensions, are observable, anchored, and actionable (Chapter
 
 **In judgekit:** a rubric lives in the *application*, not in judgekit core. The
 contract names constructs and labels; the application renders the prompt that
-applies them. `protocol.Protocol.PromptDigests` pins which rubric version was
-used, without storing the rubric text in core.
+applies them. `protocol.Protocol.PromptDigests` pins each prompt renderer/template identity;
+the cache separately hashes the fully rendered, instance-specific text.
 
 ### Rubric leakage
 **Definition (1.13).** Rubric leakage occurs when the wording or examples in a

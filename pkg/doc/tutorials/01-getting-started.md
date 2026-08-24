@@ -90,6 +90,8 @@ optional required facts, and metadata. Use `eval.NewTextArtifact` so artifacts
 are content-addressed automatically.
 
 ```go
+policyDigest, err := spec.EvidencePolicyDigest(&contract.Contract.EvidencePolicy)
+if err != nil { log.Fatal(err) }
 evidence, err := eval.NewEvidenceSet([]eval.EvidenceItem{
     {
         ID:      "e1",
@@ -97,7 +99,7 @@ evidence, err := eval.NewEvidenceSet([]eval.EvidenceItem{
         Content: eval.NewTextArtifact("text/plain", "Employees may carry over a maximum of five days."),
         SourceID: "doc-1",
     },
-}, "sha256:policy")
+}, policyDigest)
 if err != nil { log.Fatal(err) }
 
 instance, err := eval.NewInstance(
@@ -121,7 +123,10 @@ p := protocol.Protocol{
     Name:              "gec-faithfulness-v1",
     MeasurementDigest: contract.Digest,
     Model:             protocol.ModelIdentity{Provider: "fake", Model: "fake-1"},
-    PromptDigests:     map[string]string{"extract": "sha256:1", "support": "sha256:2"},
+    PromptDigests: map[string]string{
+        "extract": judging.PromptDigest("my-prompts/extract/v1"),
+        "support": judging.PromptDigest("my-prompts/support/v1"),
+    },
     Decoding:          protocol.DecodingPolicy{MaxTokens: 1024},
     EvidenceOrder:     protocol.EvidenceOrderAsGiven,
     ParserVersion:     "strict-json-v1",
@@ -143,6 +148,10 @@ from biasing claims toward what is supported.
 
 ```go
 type myPrompts struct{}
+
+func (myPrompts) TemplateDigest(step string) (string, error) {
+    return judging.PromptDigest("my-prompts/" + step + "/v1"), nil
+}
 
 func (myPrompts) ExtractPrompt(inst eval.Instance) (string, error) {
     return "Extract factual claims as {\"statements\":[...]}.\nQ: " + inst.Input.Text + "\nA: " + inst.Candidate.Text, nil
