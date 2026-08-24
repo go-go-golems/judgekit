@@ -33,6 +33,25 @@ func (s *scriptedJudge) Evaluate(_ context.Context, inst eval.Instance) (assessm
 
 var _ judging.Judge = (*scriptedJudge)(nil)
 
+type optionJudge struct {
+	reports map[string]assessment.Report
+	modes   []judging.CacheMode
+}
+
+func (o *optionJudge) Evaluate(ctx context.Context, inst eval.Instance) (assessment.Report, error) {
+	return o.EvaluateWithOptions(ctx, inst, judging.EvaluationOptions{CacheMode: judging.CacheUse})
+}
+
+func (o *optionJudge) EvaluateWithOptions(_ context.Context, inst eval.Instance, opts judging.EvaluationOptions) (assessment.Report, error) {
+	o.modes = append(o.modes, opts.CacheMode)
+	r := o.reports[inst.ID]
+	r.InstanceID = inst.ID
+	r.InstanceDigest = inst.Digest
+	return r, nil
+}
+
+var _ judging.ConfigurableJudge = (*optionJudge)(nil)
+
 func baseReport(value float64, label assessment.SupportLabel) assessment.Report {
 	now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	return assessment.Report{
@@ -86,6 +105,26 @@ func TestValidateProbe(t *testing.T) {
 	noInv.Invariants = nil
 	if err := ValidateProbe(&noInv); err == nil {
 		t.Errorf("accepted probe with no invariants")
+	}
+}
+
+func TestRunProbeBypassesConfigurableJudgeCache(t *testing.T) {
+	judge := &optionJudge{reports: map[string]assessment.Report{
+		"inst-base":    baseReport(0.5, assessment.Entailed),
+		"inst-variant": baseReport(0.5, assessment.Entailed),
+	}}
+	probe := Probe{
+		ID:              "p1",
+		Kind:            Repeat,
+		BaseInstance:    makeInstance(t, "inst-base"),
+		VariantInstance: makeInstance(t, "inst-variant"),
+		Invariants:      []string{"same semantic input"},
+	}
+	if _, _, err := RunProbe(context.Background(), judge, probe); err != nil {
+		t.Fatalf("RunProbe: %v", err)
+	}
+	if len(judge.modes) != 2 || judge.modes[0] != judging.CacheBypass || judge.modes[1] != judging.CacheBypass {
+		t.Errorf("modes = %v, want two cache bypass evaluations", judge.modes)
 	}
 }
 
@@ -165,6 +204,37 @@ func TestReliabilityPerfectAgreement(t *testing.T) {
 	}
 }
 
+func TestReliabilityCountsMissingClaimAndDimensionAsDisagreement(t *testing.T) {
+	base := baseReport(0.5, assessment.Entailed)
+	variant := baseReport(0.5, assessment.Entailed)
+	variant.Claims = nil
+	variant.ClaimResults = nil
+	variant.Dimensions = nil
+	judge := &scriptedJudge{reports: map[string]assessment.Report{
+		"inst-base": base, "inst-variant": variant,
+	}}
+	probe := Probe{ID: "p1", Kind: Repeat, BaseInstance: makeInstance(t, "inst-base"), VariantInstance: makeInstance(t, "inst-variant"), Invariants: []string{"same semantic input"}}
+	set, _ := NewProbeSet([]Probe{probe})
+	report, err := Reliability(context.Background(), judge, set, "sha256:protocol")
+	if err != nil {
+		t.Fatalf("Reliability: %v", err)
+	}
+	if report.ClaimLabelAgreement != 0 {
+		t.Errorf("claim agreement = %g, want 0 when claim disappears", report.ClaimLabelAgreement)
+	}
+	if got := report.DimensionAgreement["faithfulness"]; got != 0 {
+		t.Errorf("dimension agreement = %g, want 0 when dimension disappears", got)
+	}
+	if len(report.Disagreements) != 2 {
+		t.Fatalf("disagreements = %d, want missing claim and dimension", len(report.Disagreements))
+	}
+	for _, disagreement := range report.Disagreements {
+		if !disagreement.BasePresent || disagreement.VariantPresent {
+			t.Errorf("presence = base:%v variant:%v, want true/false", disagreement.BasePresent, disagreement.VariantPresent)
+		}
+	}
+}
+
 func TestReliabilityRejectsBadProtocolDigest(t *testing.T) {
 	probe := Probe{ID: "p1", Kind: Repeat, BaseInstance: makeInstance(t, "i1"), VariantInstance: makeInstance(t, "i2"), Invariants: []string{"x"}}
 	set, _ := NewProbeSet([]Probe{probe})
@@ -176,25 +246,36 @@ func TestReliabilityRejectsBadProtocolDigest(t *testing.T) {
 func TestPanelPreservesAllReports(t *testing.T) {
 	r1 := baseReport(0.5, assessment.Entailed)
 	r2 := baseReport(0.7, assessment.Contradicted)
+	r3 := baseReport(0.8, assessment.Entailed)
 	j1 := &scriptedJudge{reports: map[string]assessment.Report{"inst": r1}}
 	j2 := &scriptedJudge{reports: map[string]assessment.Report{"inst": r2}}
-	panel := Panel{Judges: []judging.Judge{j1, j2}, Policy: PreserveAll}
+	j3 := &scriptedJudge{reports: map[string]assessment.Report{"inst": r3}}
+	panel := Panel{Members: []PanelMember{
+		{ID: "judge-a", Judge: j1},
+		{ID: "judge-b", Judge: j2},
+		{ID: "judge-c", Judge: j3},
+	}, Policy: PreserveAll}
 	inst := makeInstance(t, "inst")
 	result, err := panel.Evaluate(context.Background(), inst)
 	if err != nil {
 		t.Fatalf("panel: %v", err)
 	}
-	if len(result.Reports) != 2 {
-		t.Errorf("expected 2 reports, got %d", len(result.Reports))
+	if len(result.Reports) != 3 {
+		t.Errorf("expected 3 reports, got %d", len(result.Reports))
 	}
-	// Pairwise agreement between entailed and contradicted is 0.
-	if got := result.AgreementMatrix["inst"]["inst"]; got != 0 {
-		t.Errorf("self agreement = %g, want 0 (labels differ)", got)
+	if got := result.AgreementMatrix["judge-a"]["judge-b"]; got != 0 {
+		t.Errorf("a/b agreement = %g, want 0 (labels differ)", got)
+	}
+	if got := result.AgreementMatrix["judge-a"]["judge-c"]; got != 1 {
+		t.Errorf("a/c agreement = %g, want 1 (labels agree)", got)
+	}
+	if len(result.AgreementMatrix) != 3 {
+		t.Errorf("agreement rows = %d, want one per judge", len(result.AgreementMatrix))
 	}
 }
 
 func TestPanelRejectsEmpty(t *testing.T) {
-	panel := Panel{Judges: nil}
+	panel := Panel{Members: nil}
 	inst := makeInstance(t, "inst")
 	if _, err := panel.Evaluate(context.Background(), inst); err == nil {
 		t.Errorf("accepted empty panel")

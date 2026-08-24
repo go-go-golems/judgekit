@@ -146,8 +146,8 @@ func TestCalibrate(t *testing.T) {
 		{ID: "c2", Text: "all leave carries over", Importance: 1, RequiresEvidence: true},
 	}
 	results := []assessment.ClaimAssessment{
-		{ClaimID: "c1", Label: assessment.Entailed, EvidenceIDs: []string{"e1"}, Reason: "ok", Confidence: ptr(0.9)},
-		{ClaimID: "c2", Label: assessment.Contradicted, EvidenceIDs: []string{"e1"}, Reason: "ok", Confidence: ptr(0.8)},
+		{ClaimID: "c1", Label: assessment.Entailed, EvidenceIDs: []string{"e1"}, Reason: "ok", VerdictConfidence: ptr(0.9), EntailedProbability: ptr(0.9)},
+		{ClaimID: "c2", Label: assessment.Contradicted, EvidenceIDs: []string{"e1"}, Reason: "ok", VerdictConfidence: ptr(0.8), EntailedProbability: ptr(0.1)},
 	}
 	reports := map[string]assessment.Report{"i1": modelReport("i1", claims, results)}
 
@@ -171,8 +171,8 @@ func TestCalibrate(t *testing.T) {
 	}
 	if report.BrierScore == nil {
 		t.Errorf("brier score should be present when confidence is emitted")
-	} else if *report.BrierScore <= 0 {
-		t.Errorf("brier = %g, want > 0 (confidence 0.9/0.8 vs outcomes 1/0)", *report.BrierScore)
+	} else if *report.BrierScore > 0.0101 || *report.BrierScore < 0.0099 {
+		t.Errorf("brier = %g, want ~0.01 (entailed probabilities 0.9/0.1 vs outcomes 1/0)", *report.BrierScore)
 	}
 	if report.ECE == nil {
 		t.Errorf("ece should be present when confidence is emitted")
@@ -206,17 +206,31 @@ func TestCalibrateMissedClaimReducesRecallNotConfusion(t *testing.T) {
 	}
 }
 
-func TestCalibrateNoConfidenceLeavesBrierNil(t *testing.T) {
+func TestCalibrateVerdictConfidenceAloneLeavesBrierNil(t *testing.T) {
 	gold := goldSet([]GoldClaim{goldClaim("i1", "c1", "a", assessment.Entailed, "r1")})
 	claims := []assessment.Claim{{ID: "c1", Text: "a", Importance: 1, RequiresEvidence: true}}
-	results := []assessment.ClaimAssessment{{ClaimID: "c1", Label: assessment.Entailed, EvidenceIDs: []string{"e1"}, Reason: "ok"}} // no Confidence
+	results := []assessment.ClaimAssessment{{ClaimID: "c1", Label: assessment.Entailed, EvidenceIDs: []string{"e1"}, Reason: "ok", VerdictConfidence: ptr(0.95)}} // no EntailedProbability
 	reports := map[string]assessment.Report{"i1": modelReport("i1", claims, results)}
 	report, err := Calibrate(CalibrateInput{Gold: gold, Reports: reports, ProtocolDigest: "sha256:protocol"})
 	if err != nil {
 		t.Fatalf("Calibrate: %v", err)
 	}
 	if report.BrierScore != nil || report.ECE != nil {
-		t.Errorf("brier/ece must be nil when no confidence is emitted")
+		t.Errorf("brier/ece must be nil when no entailed probability is emitted")
+	}
+}
+
+func TestCalibrateRejectsReportFromAnotherProtocol(t *testing.T) {
+	gold := goldSet([]GoldClaim{goldClaim("i1", "c1", "a", assessment.Entailed, "r1")})
+	report := modelReport("i1", []assessment.Claim{{ID: "c1", Text: "a", Importance: 1}}, []assessment.ClaimAssessment{{ClaimID: "c1", Label: assessment.Entailed, Reason: "ok"}})
+	report.ProtocolDigest = "sha256:other"
+	_, err := Calibrate(CalibrateInput{
+		Gold:           gold,
+		Reports:        map[string]assessment.Report{"i1": report},
+		ProtocolDigest: "sha256:protocol",
+	})
+	if err == nil {
+		t.Errorf("accepted calibration report from another protocol")
 	}
 }
 

@@ -97,11 +97,10 @@ func ExpectedCalibrationError(confidences []float64, outcomes []float64, bins in
 	return ece, nil
 }
 
-// ConfidenceOutcomePairs extracts (confidence, outcome) pairs from matched gold
-// claims and predicted verdicts. outcome is 1 when the gold label is entailed.
-// Pairs with no predicted confidence are skipped, so Brier and ECE are computed
-// only over claims the protocol emitted a confidence for. If no pair has a
-// confidence, the returned slices are empty (callers report a nil metric).
+// ConfidenceOutcomePairs extracts (entailed probability, outcome) pairs from
+// matched gold claims and predicted verdicts. Outcome is 1 when the gold label
+// is entailed. Verdict confidence is deliberately ignored because confidence
+// in a negative verdict is not the probability of entailment.
 func ConfidenceOutcomePairs(gold []GoldClaim, predicted []assessment.ClaimAssessment, matcher ClaimMatcher) ([]float64, []float64) {
 	var confidences, outcomes []float64
 	if matcher == nil {
@@ -109,10 +108,10 @@ func ConfidenceOutcomePairs(gold []GoldClaim, predicted []assessment.ClaimAssess
 	}
 	for i := range gold {
 		match, ok := findPredicted(predicted, gold[i].Claim, matcher)
-		if !ok || match.Confidence == nil {
+		if !ok || match.EntailedProbability == nil {
 			continue
 		}
-		confidences = append(confidences, *match.Confidence)
+		confidences = append(confidences, *match.EntailedProbability)
 		if IsEntailed(gold[i].Label) {
 			outcomes = append(outcomes, 1)
 		} else {

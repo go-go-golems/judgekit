@@ -74,6 +74,15 @@ func Calibrate(in CalibrateInput) (Report, error) {
 	var confusion Confusion
 	matched := 0
 	total := 0
+	for instanceID, report := range in.Reports {
+		if report.InstanceID != instanceID {
+			return Report{}, fmt.Errorf("calibrate: report map key %q does not match report instance_id %q", instanceID, report.InstanceID)
+		}
+		if report.ProtocolDigest != in.ProtocolDigest {
+			return Report{}, fmt.Errorf("calibrate: report %q protocol %q does not match requested protocol %q", instanceID, report.ProtocolDigest, in.ProtocolDigest)
+		}
+	}
+
 	for i := range in.Gold.Claims {
 		g := &in.Gold.Claims[i]
 		total++
@@ -87,8 +96,8 @@ func Calibrate(in CalibrateInput) (Report, error) {
 		}
 		matched++
 		confusion.Add(g.Label, verdict.Label)
-		if verdict.Confidence != nil {
-			allConf = append(allConf, *verdict.Confidence)
+		if verdict.EntailedProbability != nil {
+			allConf = append(allConf, *verdict.EntailedProbability)
 			if IsEntailed(g.Label) {
 				allOutc = append(allOutc, 1)
 			} else {

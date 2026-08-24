@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-go-golems/judgekit/assessment"
+	"github.com/go-go-golems/judgekit/eval"
 	"github.com/go-go-golems/judgekit/internal/canonicaljson"
 	"github.com/go-go-golems/judgekit/judging"
 	"github.com/go-go-golems/judgekit/spec"
@@ -40,11 +41,17 @@ func RunProbe(ctx context.Context, judge judging.Judge, probe Probe) (assessment
 	if judge == nil {
 		return assessment.Report{}, assessment.Report{}, fmt.Errorf("run probe: judge is nil")
 	}
-	base, err := judge.Evaluate(ctx, probe.BaseInstance)
+	evaluate := judge.Evaluate
+	if configurable, ok := judge.(judging.ConfigurableJudge); ok {
+		evaluate = func(ctx context.Context, inst eval.Instance) (assessment.Report, error) {
+			return configurable.EvaluateWithOptions(ctx, inst, judging.EvaluationOptions{CacheMode: judging.CacheBypass})
+		}
+	}
+	base, err := evaluate(ctx, probe.BaseInstance)
 	if err != nil {
 		return assessment.Report{}, assessment.Report{}, fmt.Errorf("run probe %q: base: %w", probe.ID, err)
 	}
-	variant, err := judge.Evaluate(ctx, probe.VariantInstance)
+	variant, err := evaluate(ctx, probe.VariantInstance)
 	if err != nil {
 		return assessment.Report{}, assessment.Report{}, fmt.Errorf("run probe %q: variant: %w", probe.ID, err)
 	}
@@ -90,34 +97,32 @@ func Reliability(ctx context.Context, judge judging.Judge, set ProbeSet, protoco
 		disags := CompareReports(probe.ID, probe.Kind, base, variant)
 		report.Disagreements = append(report.Disagreements, disags...)
 
-		// Claim-label agreement over claims present in both reports.
+		// Claim-label agreement over the union. Missing claims count in the
+		// denominator and cannot be agreements.
 		bc := indexClaims(base)
 		vc := indexClaims(variant)
-		for cid, b := range bc {
-			v, ok := vc[cid]
-			if !ok {
-				continue
-			}
+		for _, cid := range unionKeys(bc, vc) {
+			b, baseOK := bc[cid]
+			v, variantOK := vc[cid]
 			claimTotal++
-			if b.Label == v.Label {
+			if baseOK && variantOK && b.Label == v.Label {
 				claimMatches++
 			}
 		}
 
-		// Per-construct dimension agreement and mean absolute delta.
+		// Per-construct agreement also uses the union. Numeric delta is only
+		// defined when both sides emitted numeric values.
 		bd := indexDims(base)
 		vd := indexDims(variant)
-		for cid, b := range bd {
-			v, ok := vd[cid]
-			if !ok {
-				continue
-			}
+		for _, cid := range unionKeys(bd, vd) {
+			b, baseOK := bd[cid]
+			v, variantOK := vd[cid]
 			cidID := spec.ConstructID(cid)
 			dimTotal[cidID]++
-			if !dimDiffers(b, v) {
+			if baseOK && variantOK && !dimDiffers(b, v) {
 				dimMatches[cidID]++
 			}
-			if b.Value != nil && v.Value != nil {
+			if baseOK && variantOK && b.Value != nil && v.Value != nil {
 				dimDeltaSum[cidID] += math.Abs(*b.Value - *v.Value)
 				dimDeltaCount[cidID]++
 			}
