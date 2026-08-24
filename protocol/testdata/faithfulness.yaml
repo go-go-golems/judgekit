@@ -1,0 +1,21 @@
+api_version: judgekit.protocol/v1
+name: gec-rag-faithfulness-v2
+measurement_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+model:
+  provider: geppetto
+  model: gpt-5.6-luna
+  revision: "2026-08-01"
+prompt_digests:
+  extract: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  support: sha256:2222222222222222222222222222222222222222222222222222222222222222
+decoding:
+  temperature: 0.0
+  max_tokens: 1024
+  seed: 42
+evidence_order: as_given
+parser_version: strict-json-v1
+aggregator_version: faithfulness-fraction-v1
+retry:
+  maximum_attempts: 2
+  repair_kinds:
+    - structural

@@ -1,0 +1,49 @@
+api_version: judgekit.measurement/v1
+name: rag-faithfulness
+constructs:
+  - id: faithfulness
+    name: Evidence faithfulness
+    definition: The fraction of extracted factual claims entailed by the admitted evidence.
+    unit: fraction
+    direction: maximize
+    range:
+      minimum: 0.0
+      maximum: 1.0
+  - id: relevance
+    name: Answer relevance
+    definition: How well the answer addresses the question on a 0..1 scale.
+    unit: fraction
+    direction: maximize
+    range:
+      minimum: 0.0
+      maximum: 1.0
+  - id: abstention
+    name: Appropriate abstention
+    definition: Whether the answer abstains when it cannot be grounded.
+    unit: label
+    direction: descriptive
+evidence_policy:
+  allowed_kinds:
+    - knowledge
+  forbidden_kinds:
+    - model_knowledge
+labels:
+  faithfulness:
+    - entailed
+    - contradicted
+    - insufficient
+  abstention:
+    - attempted
+    - abstained
+aggregations:
+  faithfulness:
+    method: fraction
+    numerator: entailed
+    denominator: entailed,contradicted,insufficient
+    empty_policy: vacuous_perfect
+  relevance:
+    method: direct
+    empty_policy: na
+  abstention:
+    method: direct
+    empty_policy: na

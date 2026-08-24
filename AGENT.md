@@ -2,11 +2,17 @@
 
 ## Build Commands
 
-- Run a binary in XXX/YYY/FOOO: `go run ./XXX/YYY/FOOO` . Use this instead of build + ./XXX.
-- Build: `go build ./...`
-- Test: `go test ./...`
-- Run single test: `go test ./pkg/path/to/package -run TestName`
-- Generate: `go generate ./...`
+Judgekit is a library-first Go module with a thin `cmd/judgekit` CLI that hosts the
+Glazed help system. Core domain packages (`spec`, `eval`, `protocol`,
+`assessment`, `judging`, and everything under `internal/`) must depend only on the
+standard library and internal helpers — never on Glazed, Cobra, provider SDKs,
+or other products. The CLI in `cmd/judgekit` is the only place allowed to import
+Glazed/Cobra.
+
+- Run the CLI: `go run ./cmd/judgekit`
+- Build: `GOWORK=off go build ./...`
+- Test: `GOWORK=off go test ./...`
+- Run single test: `go test ./spec -run TestName`
 - Lint: `golangci-lint run -v` or `make lint`
 - Format: `go fmt ./...`
 
@@ -15,11 +21,12 @@ Use capture-pane to read the output.
 
 ## Project Structure
 
-- `cmd/`: CLI commands and entry points
-- `pkg/`: Library code organized by domain
-- `examples/`: Example configurations and usage
-- `doc/`: Documentation
-- `ttmp/YYYY-MM-DD/`: this is where all temporary documentation as well as debugging logs and other reports go
+- `cmd/judgekit/`: thin CLI entry point hosting the Glazed help system
+- `spec/`, `eval/`, `protocol/`, `assessment/`, `judging/`: provider-neutral core domain packages
+- `internal/`: canonical-JSON, strict-decode, and identifier helpers shared by core
+- `pkg/doc/`: embedded Glazed help entries and developer docs
+- `examples/`: runnable examples using fake generators (no provider credentials)
+- `ttmp/YYYY/MM/DD/`: docmgr ticket workspace for design, diary, and reports
 
 <runningProcessesGuidelines>
 - When testing TUIs, use tmux and capture-pane to interact with the UI.

@@ -19,9 +19,6 @@ jobs:
           go-version-file: go.mod
           cache: true
       -
-        name: Verify logcopter package loggers
-        run: make logcopter-check
-      -
         name: Generate assets
         run: go generate ./...
       -

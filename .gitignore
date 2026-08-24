@@ -15,6 +15,9 @@
 # vendor/
 dist/
 
+# Build artifacts in repo root
+/judgekit
+
 # misc files and directories
 .env
 .envrc
