@@ -29,8 +29,8 @@ func (examplePrompts) TemplateDigest(step string) (string, error) {
 	return judging.PromptDigest("example-prompts/" + step + "/v1"), nil
 }
 
-func (examplePrompts) ExtractPrompt(inst eval.Instance) (string, error) {
-	return "Extract factual claims as {\"statements\":[...]}.\nQ: " + inst.Input.Text + "\nA: " + inst.Candidate.Text, nil
+func (examplePrompts) ExtractPrompt(input judging.ClaimExtractionInput) (string, error) {
+	return "Extract factual claims as {\"statements\":[...]}.\nQ: " + input.Input.Text + "\nA: " + input.Candidate.Text, nil
 }
 
 func (examplePrompts) SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error) {

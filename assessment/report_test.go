@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-go-golems/judgekit/eval"
+	"github.com/go-go-golems/judgekit/protocol"
 	"github.com/go-go-golems/judgekit/spec"
 )
 
@@ -29,6 +30,18 @@ func sampleReport() Report {
 		Dimensions: []DimensionResult{
 			{ConstructID: "faithfulness", Applicable: true, Value: ptrFloat(0.5), EvidenceIDs: []string{"e1"}},
 			{ConstructID: "relevance", Applicable: true, Value: ptrFloat(0.9)},
+		},
+		Provenance: RunProvenance{
+			ContractDigest:        "sha256:contract",
+			ProtocolDigest:        "sha256:protocol",
+			InstanceDigest:        "sha256:instance",
+			PromptTemplateDigests: map[string]string{"judge": "sha256:template"},
+			ExpectedModel:         protocol.ModelIdentity{Provider: "fake", Model: "fake-1"},
+			CacheMode:             "use",
+			Generations: []PromptExecution{{
+				Step: "judge", Attempt: 1, RenderedPromptDigest: "sha256:rendered",
+				ObservedModel: protocol.ModelIdentity{Provider: "fake", Model: "fake-1"},
+			}},
 		},
 		StartedAt:  now,
 		FinishedAt: now.Add(2 * time.Second),

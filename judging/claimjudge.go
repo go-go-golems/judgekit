@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -21,9 +22,19 @@ import (
 // the claims and (through the instance) the evidence. TemplateDigest returns
 // the stable identity of the renderer/template for each step; the protocol
 // pins these identities while cache keys separately hash rendered prompt text.
+type ClaimExtractionInput struct {
+	ID        string            `json:"id"`
+	Input     eval.Artifact     `json:"input"`
+	Candidate eval.Artifact     `json:"candidate"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+// ClaimProtocol receives a restricted extraction input that cannot expose
+// evidence, references, or required facts. The support stage receives the full
+// instance after claims have been fixed.
 type ClaimProtocol interface {
 	TemplateDigest(step string) (string, error)
-	ExtractPrompt(inst eval.Instance) (string, error)
+	ExtractPrompt(input ClaimExtractionInput) (string, error)
 	SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error)
 }
 
@@ -118,17 +129,23 @@ func (j *ClaimJudge) EvaluateWithOptions(ctx context.Context, inst eval.Instance
 	if opts.CacheMode != CacheUse && opts.CacheMode != CacheBypass {
 		return assessment.Report{}, fmt.Errorf("claim judge: cache mode %q is not recognized", opts.CacheMode)
 	}
+	bound, err := eval.BindCurrentIdentity(inst)
+	if err != nil {
+		return assessment.Report{}, fmt.Errorf("claim judge: bind current instance identity: %w", err)
+	}
+	inst = bound
 	if err := j.validateFor(&inst); err != nil {
 		return assessment.Report{}, err
 	}
 	allowed := assessment.EvidenceIDSet(inst.Evidence.Items)
 	started := j.now()
+	collector := &runCollector{}
 
-	claims, err := j.extractClaims(ctx, inst, opts)
+	claims, err := j.extractClaims(ctx, inst, opts, collector)
 	if err != nil {
 		return assessment.Report{}, err
 	}
-	results, directs, err := j.judgeSupport(ctx, inst, claims, opts)
+	results, directs, err := j.judgeSupport(ctx, inst, claims, opts, collector)
 	if err != nil {
 		return assessment.Report{}, err
 	}
@@ -145,8 +162,17 @@ func (j *ClaimJudge) EvaluateWithOptions(ctx context.Context, inst eval.Instance
 		Claims:         claims,
 		ClaimResults:   results,
 		Dimensions:     dims,
-		StartedAt:      started,
-		FinishedAt:     j.now(),
+		Provenance: assessment.RunProvenance{
+			ContractDigest:        j.Contract.Digest,
+			ProtocolDigest:        j.Protocol.Digest,
+			InstanceDigest:        inst.Digest,
+			PromptTemplateDigests: maps.Clone(j.Protocol.Protocol.PromptDigests),
+			ExpectedModel:         j.Protocol.Protocol.Model,
+			CacheMode:             string(opts.CacheMode),
+			Generations:           append([]assessment.PromptExecution(nil), collector.generations...),
+		},
+		StartedAt:  started,
+		FinishedAt: j.now(),
 	}
 	if err := assessment.Seal(&report, allowed); err != nil {
 		return assessment.Report{}, fmt.Errorf("claim judge: %w", err)
@@ -239,12 +265,20 @@ func (j *ClaimJudge) validateEvidencePolicy(set *eval.EvidenceSet) error {
 	return nil
 }
 
-func (j *ClaimJudge) extractClaims(ctx context.Context, inst eval.Instance, opts EvaluationOptions) ([]assessment.Claim, error) {
-	prompt, err := j.Prompts.ExtractPrompt(inst)
+type runCollector struct {
+	generations []assessment.PromptExecution
+}
+
+func extractionInput(inst eval.Instance) ClaimExtractionInput {
+	return ClaimExtractionInput{ID: inst.ID, Input: inst.Input, Candidate: inst.Candidate, Metadata: maps.Clone(inst.Metadata)}
+}
+
+func (j *ClaimJudge) extractClaims(ctx context.Context, inst eval.Instance, opts EvaluationOptions, collector *runCollector) ([]assessment.Claim, error) {
+	prompt, err := j.Prompts.ExtractPrompt(extractionInput(inst))
 	if err != nil {
 		return nil, fmt.Errorf("extract prompt: %w", err)
 	}
-	payload, err := generateAndDecode[extractPayload](ctx, j, inst, "extract", prompt, opts)
+	payload, err := generateAndDecode[extractPayload](ctx, j, inst, "extract", prompt, opts, collector)
 	if err != nil {
 		return nil, fmt.Errorf("extract: %w", err)
 	}
@@ -266,12 +300,12 @@ func (j *ClaimJudge) extractClaims(ctx context.Context, inst eval.Instance, opts
 	return claims, nil
 }
 
-func (j *ClaimJudge) judgeSupport(ctx context.Context, inst eval.Instance, claims []assessment.Claim, opts EvaluationOptions) ([]assessment.ClaimAssessment, []directDimension, error) {
+func (j *ClaimJudge) judgeSupport(ctx context.Context, inst eval.Instance, claims []assessment.Claim, opts EvaluationOptions, collector *runCollector) ([]assessment.ClaimAssessment, []directDimension, error) {
 	prompt, err := j.Prompts.SupportPrompt(inst, claims)
 	if err != nil {
 		return nil, nil, fmt.Errorf("support prompt: %w", err)
 	}
-	payload, err := generateAndDecode[supportPayload](ctx, j, inst, "support", prompt, opts)
+	payload, err := generateAndDecode[supportPayload](ctx, j, inst, "support", prompt, opts, collector)
 	if err != nil {
 		return nil, nil, fmt.Errorf("support: %w", err)
 	}
@@ -446,7 +480,7 @@ func unionEvidenceForLabels(results []assessment.ClaimAssessment, list string) [
 // generateAndDecode generates (with cache) and strictly decodes one JSON
 // object, retrying once per repair attempt on a structural failure. Semantic
 // failures are not retried; they surface to the caller and fail closed at seal.
-func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Instance, step, prompt string, opts EvaluationOptions) (T, error) {
+func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Instance, step, prompt string, opts EvaluationOptions, collector *runCollector) (T, error) {
 	var zero T
 	maxAttempts := j.Protocol.Protocol.Retry.MaximumAttempts
 	if maxAttempts < 1 {
@@ -455,11 +489,21 @@ func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Inst
 	current := prompt
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		raw, err := j.generate(ctx, inst, step, current, opts)
+		result, cacheHit, err := j.generate(ctx, inst, step, current, opts)
 		if err != nil {
 			return zero, fmt.Errorf("generate: %w", err)
 		}
-		out, derr := DecodeJSONObjectStrict[T](raw)
+		collector.generations = append(collector.generations, assessment.PromptExecution{
+			Step:                 step,
+			Attempt:              attempt,
+			RenderedPromptDigest: PromptDigest(current),
+			ObservedModel:        result.Model,
+			CacheHit:             cacheHit,
+			InputTokens:          result.InputTokens,
+			OutputTokens:         result.OutputTokens,
+			DurationNanos:        result.Duration.Nanoseconds(),
+		})
+		out, derr := DecodeJSONObjectStrict[T](result.Text)
 		if derr == nil {
 			return out, nil
 		}
@@ -477,7 +521,7 @@ func generateAndDecode[T any](ctx context.Context, j *ClaimJudge, inst eval.Inst
 	return zero, lastErr
 }
 
-func (j *ClaimJudge) generate(ctx context.Context, inst eval.Instance, step, prompt string, opts EvaluationOptions) (string, error) {
+func (j *ClaimJudge) generate(ctx context.Context, inst eval.Instance, step, prompt string, opts EvaluationOptions) (GenerationResult, bool, error) {
 	key := CacheKey{
 		ProtocolDigest: j.Protocol.Digest,
 		InstanceDigest: inst.Digest,
@@ -486,25 +530,31 @@ func (j *ClaimJudge) generate(ctx context.Context, inst eval.Instance, step, pro
 	}
 	cache := j.cache()
 	if opts.CacheMode != CacheBypass {
-		var cached string
+		var cached GenerationResult
 		if hit, err := cache.Load(ctx, key, &cached); err != nil {
-			return "", fmt.Errorf("cache load: %w", err)
+			return GenerationResult{}, false, fmt.Errorf("cache load: %w", err)
 		} else if hit {
-			return cached, nil
+			if err := protocol.ValidateObservedModel(j.Protocol.Protocol.Model, cached.Model); err != nil {
+				return GenerationResult{}, false, fmt.Errorf("cached generation: %w", err)
+			}
+			return cached, true, nil
 		}
 	}
-	res, err := j.Generate.Generate(ctx, GenerationRequest{
+	result, err := j.Generate.Generate(ctx, GenerationRequest{
 		Prompt:     prompt,
 		ProtocolID: j.Protocol.Protocol.Name,
 		Step:       step,
 	})
 	if err != nil {
-		return "", err
+		return GenerationResult{}, false, err
+	}
+	if err := protocol.ValidateObservedModel(j.Protocol.Protocol.Model, result.Model); err != nil {
+		return GenerationResult{}, false, err
 	}
 	if opts.CacheMode != CacheBypass {
-		if err := cache.Store(ctx, key, res.Text); err != nil {
-			return "", fmt.Errorf("cache store: %w", err)
+		if err := cache.Store(ctx, key, result); err != nil {
+			return GenerationResult{}, false, fmt.Errorf("cache store: %w", err)
 		}
 	}
-	return res.Text, nil
+	return result, false, nil
 }

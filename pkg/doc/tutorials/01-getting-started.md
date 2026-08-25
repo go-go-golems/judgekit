@@ -153,8 +153,8 @@ func (myPrompts) TemplateDigest(step string) (string, error) {
     return judging.PromptDigest("my-prompts/" + step + "/v1"), nil
 }
 
-func (myPrompts) ExtractPrompt(inst eval.Instance) (string, error) {
-    return "Extract factual claims as {\"statements\":[...]}.\nQ: " + inst.Input.Text + "\nA: " + inst.Candidate.Text, nil
+func (myPrompts) ExtractPrompt(input judging.ClaimExtractionInput) (string, error) {
+    return "Extract factual claims as {\"statements\":[...]}.\nQ: " + input.Input.Text + "\nA: " + input.Candidate.Text, nil
 }
 
 func (myPrompts) SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error) {
@@ -200,8 +200,11 @@ for _, d := range report.Dimensions {
 ```
 
 The report is sealed: `report.Digest` is a function of its content, and it
-carries `report.InstanceDigest` and `report.ProtocolDigest` so a reader can
-prove which inputs and protocol produced it.
+carries `report.InstanceDigest`, `report.ProtocolDigest`, and
+`report.Provenance`. Provenance records the contract, prompt-template and
+rendered-prompt digests, expected and observed model, cache mode, cache hits,
+usage, and duration. These are internal research fingerprints, not provider
+attestations.
 
 ## Why each step matters
 

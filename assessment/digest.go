@@ -18,6 +18,7 @@ type reportDigestInput struct {
 	ClaimResults   []ClaimAssessment `json:"claim_results,omitempty"`
 	Dimensions     []DimensionResult `json:"dimensions"`
 	RawArtifacts   []reportArtifact  `json:"raw_artifacts,omitempty"`
+	Provenance     RunProvenance     `json:"provenance"`
 	StartedAt      string            `json:"started_at"`
 	FinishedAt     string            `json:"finished_at"`
 }
@@ -43,6 +44,7 @@ func ReportDigest(r *Report) (string, error) {
 		Claims:         r.Claims,
 		ClaimResults:   r.ClaimResults,
 		Dimensions:     r.Dimensions,
+		Provenance:     r.Provenance,
 		StartedAt:      r.StartedAt.UTC().Format(time.RFC3339Nano),
 		FinishedAt:     r.FinishedAt.UTC().Format(time.RFC3339Nano),
 	}

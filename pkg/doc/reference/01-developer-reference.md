@@ -168,6 +168,7 @@ type Report struct {
     ClaimResults   []ClaimAssessment
     Dimensions     []DimensionResult
     RawArtifacts   []eval.Artifact
+    Provenance     RunProvenance  // contract, prompts, model, cache mode
     StartedAt      time.Time
     FinishedAt     time.Time
     Digest         string
@@ -198,7 +199,7 @@ type Judge interface {
 
 type ClaimProtocol interface {
     TemplateDigest(step string) (string, error)
-    ExtractPrompt(inst eval.Instance) (string, error)
+    ExtractPrompt(input ClaimExtractionInput) (string, error)
     SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error)
 }
 
@@ -219,8 +220,13 @@ Entry points: `(*ClaimJudge).Evaluate(ctx, inst)`,
 `judging.DecodeJSONObjectStrict[T](raw)`, `judging.IsStructural(err)`.
 
 Invariants:
-- The extractor never sees evidence; the support judge may only cite evidence in
-  the instance.
+- The extractor receives a restricted value with no evidence, reference, or
+  required facts; the support judge may only cite evidence in the instance.
+- Instance and evidence-set identities are recomputed from current content at
+  the execution boundary instead of trusting a stale caller digest.
+- Every generation must report the exact model identity pinned by the protocol.
+- Reports retain template and rendered prompt digests, model attribution, cache
+  mode, cache hits, usage, and duration.
 - Only structural failures are repaired (up to `Retry.MaximumAttempts`); semantic
   failures fail closed at seal.
 - Protocol prompt digests bind stable template identities; cache keys hash the fully rendered prompt.

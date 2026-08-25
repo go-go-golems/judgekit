@@ -22,6 +22,7 @@ type Report struct {
 	ClaimResults   []ClaimAssessment `json:"claim_results,omitempty" yaml:"claim_results,omitempty"`
 	Dimensions     []DimensionResult `json:"dimensions" yaml:"dimensions"`
 	RawArtifacts   []eval.Artifact   `json:"raw_artifacts,omitempty" yaml:"raw_artifacts,omitempty"`
+	Provenance     RunProvenance     `json:"provenance" yaml:"provenance"`
 	StartedAt      time.Time         `json:"started_at" yaml:"started_at"`
 	FinishedAt     time.Time         `json:"finished_at" yaml:"finished_at"`
 	Digest         string            `json:"digest" yaml:"digest"`
