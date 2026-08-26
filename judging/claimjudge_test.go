@@ -26,8 +26,8 @@ func (testPrompts) TemplateDigest(step string) (string, error) {
 	}
 }
 
-func (testPrompts) ExtractPrompt(inst eval.Instance) (string, error) {
-	return "EXTRACT\nQ: " + inst.Input.Text + "\nA: " + inst.Candidate.Text, nil
+func (testPrompts) ExtractPrompt(input ClaimExtractionInput) (string, error) {
+	return "EXTRACT\nQ: " + input.Input.Text + "\nA: " + input.Candidate.Text, nil
 }
 
 func (testPrompts) SupportPrompt(inst eval.Instance, claims []assessment.Claim) (string, error) {
@@ -435,5 +435,83 @@ func TestClaimJudgeFailsClosedOnBadLabel(t *testing.T) {
 	judge := &ClaimJudge{Contract: contract, Protocol: proto, Prompts: testPrompts{}, Generate: gen, Clock: fixedClock}
 	if _, err := judge.Evaluate(context.Background(), inst); err == nil {
 		t.Errorf("Evaluate accepted an invalid support label, want fail-closed error")
+	}
+}
+
+func TestClaimJudgeRebindsCurrentInstanceIdentity(t *testing.T) {
+	contract := buildContract(t)
+	proto := buildProtocol(t, contract, 1)
+	instance := buildInstance(t, contract)
+	staleDigest := instance.Digest
+	instance.Metadata = map[string]string{"arm": "changed-after-construction"}
+	gen := &FakeGenerator{Responses: map[string]string{
+		"extract": `{"statements":[]}`,
+		"support": `{"verdicts":[],"dimensions":[{"construct_id":"relevance","value":0.5},{"construct_id":"abstention","label":"abstained"}]}`,
+	}}
+	judge := &ClaimJudge{Contract: contract, Protocol: proto, Prompts: testPrompts{}, Generate: gen, Clock: fixedClock}
+	report, err := judge.Evaluate(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("evaluate stale caller instance: %v", err)
+	}
+	if report.InstanceDigest == staleDigest {
+		t.Fatal("report trusted stale caller instance digest")
+	}
+	if report.Provenance.InstanceDigest != report.InstanceDigest {
+		t.Fatalf("provenance instance digest = %q, report = %q", report.Provenance.InstanceDigest, report.InstanceDigest)
+	}
+}
+
+func TestClaimJudgeRecordsPromptModelAndCacheAttribution(t *testing.T) {
+	contract := buildContract(t)
+	proto := buildProtocol(t, contract, 1)
+	instance := buildInstance(t, contract)
+	gen := &FakeGenerator{Responses: map[string]string{
+		"extract": `{"statements":[]}`,
+		"support": `{"verdicts":[],"dimensions":[{"construct_id":"relevance","value":0.5},{"construct_id":"abstention","label":"abstained"}]}`,
+	}}
+	judge := &ClaimJudge{Contract: contract, Protocol: proto, Prompts: testPrompts{}, Generate: gen, Cache: NewMemoryCache(), Clock: fixedClock}
+	first, err := judge.Evaluate(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("first evaluate: %v", err)
+	}
+	if first.Provenance.ContractDigest != contract.Digest || first.Provenance.ProtocolDigest != proto.Digest {
+		t.Fatalf("unexpected contract/protocol provenance: %+v", first.Provenance)
+	}
+	if first.Provenance.CacheMode != string(CacheUse) || len(first.Provenance.Generations) != 2 {
+		t.Fatalf("unexpected first-run provenance: %+v", first.Provenance)
+	}
+	for _, generation := range first.Provenance.Generations {
+		if generation.CacheHit || generation.RenderedPromptDigest == "" {
+			t.Fatalf("unexpected fresh generation provenance: %+v", generation)
+		}
+		if err := protocol.ValidateObservedModel(proto.Protocol.Model, generation.ObservedModel); err != nil {
+			t.Fatalf("observed model: %v", err)
+		}
+	}
+
+	second, err := judge.Evaluate(context.Background(), instance)
+	if err != nil {
+		t.Fatalf("cached evaluate: %v", err)
+	}
+	for _, generation := range second.Provenance.Generations {
+		if !generation.CacheHit {
+			t.Fatalf("expected cache hit provenance: %+v", generation)
+		}
+	}
+}
+
+func TestClaimJudgeRejectsObservedModelMismatch(t *testing.T) {
+	contract := buildContract(t)
+	proto := buildProtocol(t, contract, 1)
+	gen := &FakeGenerator{
+		Responses: map[string]string{"extract": `{"statements":[]}`},
+		Model:     protocol.ModelIdentity{Provider: "fake", Model: "wrong-model"},
+	}
+	judge := &ClaimJudge{Contract: contract, Protocol: proto, Prompts: testPrompts{}, Generate: gen, Cache: NewMemoryCache()}
+	if _, err := judge.Evaluate(context.Background(), buildInstance(t, contract)); err == nil {
+		t.Fatal("accepted a generation attributed to another model")
+	}
+	if len(gen.Calls) != 1 {
+		t.Fatalf("generator calls = %d, want one failed extract", len(gen.Calls))
 	}
 }

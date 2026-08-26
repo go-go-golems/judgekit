@@ -169,6 +169,9 @@ func validateReportBody(r *Report, allowedEvidence map[string]struct{}) error {
 	if r.FinishedAt.Before(r.StartedAt) {
 		return fmt.Errorf("report: finished_at is before started_at")
 	}
+	if err := validateRunProvenance(&r.Provenance, r.ProtocolDigest, r.InstanceDigest); err != nil {
+		return err
+	}
 	// Claims: unique IDs.
 	claimIDs := make(map[string]struct{}, len(r.Claims))
 	for i := range r.Claims {

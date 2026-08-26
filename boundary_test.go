@@ -21,8 +21,10 @@ var forbiddenImportPrefixes = []string{
 	"github.com/go-go-golems/geppetto",
 	"github.com/go-go-golems/pinocchio",
 	"github.com/go-go-golems/coinvault",
+	"github.com/go-go-golems/optkit",
 	"github.com/go-go-golems/ragopt",
 	"github.com/go-go-golems/ragkit",
+	"github.com/the-tree-center/rag-ttc",
 	"github.com/sashabaranov/go-openai",
 	"github.com/anthropics/anthropic-sdk-go",
 }
